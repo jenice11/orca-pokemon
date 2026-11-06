@@ -1,0 +1,38 @@
+{
+  "manifestVersion": 2,
+  "id": "pokemon-agents",
+  "name": "Pokémon Agents",
+  "version": "0.1.0",
+  "description": "Live Pokémon companions for Orca's terminal agents, with species selection and click-to-focus.",
+  "engines": {
+    "orca": ">=1.4.250"
+  },
+  "execution": "trusted-worker",
+  "main": "worker.ts",
+  "pluginApi": 1,
+  "contributes": {
+    "panels": [
+      {
+        "id": "pokemon-agents",
+        "title": "Pokémon Agents",
+        "icon": "bot",
+        "entry": "panel/index.html",
+        "ui": "html"
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "kind": "workspace:read"
+    },
+    {
+      "kind": "workspace:write"
+    },
+    {
+      "kind": "agent:read"
+    },
+    {
+      "kind": "storage:own"
+    }
+  ]
+}
