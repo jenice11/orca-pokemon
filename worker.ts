@@ -1,5 +1,7 @@
 import { callCli } from './cli.ts';
 import { record, rosterFromCli, terminalHandle, type AgentRow, type Roster } from './model.ts';
+import { AudioCapture } from './audio-capture.ts';
+import { audioSession, type AudioFrame, type AudioStatus } from './audio-protocol.ts';
 
 // Local structural contract: this Orca build's `plugin types` command lacks its packaged declarations.
 export interface WorkerApi {
@@ -36,6 +38,34 @@ export function registerPanel(orca: WorkerApi, run: typeof callCli): void {
   });
 }
 
-export default function activate(orca: WorkerApi): void {
+export interface AudioWorkerApi {
+  panels: {
+    handle(name: string, handler: (input: unknown) => Promise<unknown>): unknown;
+    post(event: string, payload: AudioStatus | AudioFrame): void | Promise<void>;
+  };
+}
+
+export function registerAudio(orca: AudioWorkerApi, capture: AudioCapture): void {
+  orca.panels.handle('audio.status', async (): Promise<AudioStatus> => capture.status());
+  orca.panels.handle('audio.start', async (input: unknown): Promise<AudioStatus> => capture.start(audioSession(input)));
+  orca.panels.handle('audio.stop', async (input: unknown): Promise<AudioStatus> => capture.stop(audioSession(input)));
+  orca.panels.handle('audio.heartbeat', async (input: unknown): Promise<AudioStatus> => capture.heartbeat(audioSession(input)));
+}
+
+let activeCapture: AudioCapture | null = null;
+
+function forceCaptureExit(): void { void activeCapture?.dispose(true); }
+
+export async function deactivate(): Promise<void> {
+  const capture: AudioCapture | null = activeCapture;
+  await capture?.dispose();
+  if (activeCapture === capture) activeCapture = null;
+  process.off('exit', forceCaptureExit);
+}
+
+export default function activate(orca: WorkerApi & AudioWorkerApi): void {
   registerPanel(orca, callCli);
+  activeCapture = new AudioCapture((event, payload): void | Promise<void> => orca.panels.post(event, payload));
+  registerAudio(orca, activeCapture);
+  process.once('exit', forceCaptureExit);
 }

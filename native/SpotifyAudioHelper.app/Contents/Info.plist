@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>SpotifyAudioHelper</string>
+  <key>CFBundleIdentifier</key><string>dev.jenice11.orca.spotify-visualizer</string>
+  <key>CFBundleName</key><string>Spotify Audio Helper</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>26.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSAudioCaptureUsageDescription</key><string>Visualize Spotify playback after you click Start. Audio stays in memory and is never recorded or sent.</string>
+</dict></plist>
