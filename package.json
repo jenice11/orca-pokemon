@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test model.test.ts worker.test.ts cli.test.ts audio-capture.test.ts audio-theme.test.ts",
+    "test": "node --test model.test.ts worker.test.ts cli.test.ts audio-capture.test.ts audio-theme.test.ts audio-panel.test.ts",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "preview": "node tools/preview.ts"
   },

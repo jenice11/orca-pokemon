@@ -1,9 +1,11 @@
 import { agentState, choiceKey, defaultPokemon, type AgentRow, type Roster } from '../model.ts';
 import { POKEMON, type Pokemon, type SpriteAnimation } from './sprites.ts';
+import { setupAudioVisualizer, type AudioBridge, type AudioVisualizer } from './audio.ts';
+import { updateAudioTheme } from './audio-theme.ts';
 
 interface FrameApi {
   host: { has(method: string): boolean; call(method: string, params: unknown): Promise<unknown> };
-  plugin: { request(name: string, input?: unknown): Promise<unknown> };
+  plugin: AudioBridge;
   on(event: string, handler: (payload: unknown) => void): unknown;
   storage: { onDidChange(handler: (event: { key: string }) => void): unknown };
 }
@@ -52,6 +54,7 @@ let statusRevision: number = 0;
 let rosterStale: boolean = false;
 let rosterError: string = '';
 let operationError: string = '';
+let audioVisualizer: AudioVisualizer | undefined;
 const statusUpdates: Map<string, { revision: number; state: AgentRow['state'] }> = new Map();
 
 function showError(error: unknown): void {
@@ -101,6 +104,7 @@ function updateMotion(): void {
   motionButton.textContent = paused ? 'Resume motion' : 'Pause motion';
   motionButton.setAttribute('aria-pressed', String(paused));
   for (const companion of companions.values()) animateSprite(companion);
+  audioVisualizer?.setMotionPaused(paused);
 }
 
 async function loadChoice(companion: Companion): Promise<void> {
@@ -267,11 +271,15 @@ async function start(): Promise<void> {
   for (const method of ['agents.list', 'events.subscribe', 'plugin.request', 'storage.get', 'storage.set']) {
     if (!orca.host.has(method)) { showError(`This Orca does not support ${method}. Update Orca to 1.4.250 or newer.`); return; }
   }
+  audioVisualizer = setupAudioVisualizer(orca.plugin, paused, orca.host);
+  updateAudioTheme();
+  orca.on('theme', updateAudioTheme);
   orca.on('agent.status.changed', statusChanged);
   orca.on('workspace.changed', scheduleRefresh);
   orca.on('workspace.created', scheduleRefresh);
   orca.on('workspace.removed', scheduleRefresh);
   orca.storage.onDidChange((event: { key: string }): void => {
+    audioVisualizer?.preferenceChanged(event.key);
     for (const companion of companions.values()) {
       if (companion.storageKey === event.key && !companion.saving) void loadChoice(companion);
     }
