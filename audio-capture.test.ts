@@ -75,9 +75,25 @@ test('explicit start is single-flight, streams validated frames, and stop closes
   capture.dispose();
 });
 
+test('valid audio messages can arrive in one large stdout chunk', (): void => {
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const capture: AudioCapture = new AudioCapture((): void => {}, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+  try {
+    capture.start(session);
+    const line: string = JSON.stringify({ type: 'frame', ...frame }) + '\n';
+    const chunk: string = '{"type":"ready"}\n' + line.repeat(Math.ceil(32769 / line.length));
+    assert.ok(chunk.length > 32768);
+    fixture.child.stdout.emit('data', chunk);
+    assert.equal(capture.status().state, 'listening');
+    assert.deepEqual(fixture.signals, []);
+  } finally {
+    void capture.dispose(true);
+  }
+});
+
 test('lease expiry, stalled streams, and invalid data fail closed', (context: TestContext): void => {
   context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
-  for (const mode of ['lease', 'stalled', 'invalid', 'oversize']) {
+  for (const mode of ['lease', 'stalled', 'invalid', 'oversize', 'oversize-line', 'oversize-remainder']) {
     const fixture: ReturnType<typeof childFixture> = childFixture();
     const capture: AudioCapture = new AudioCapture((): void => {}, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
     capture.start(session);
@@ -91,13 +107,41 @@ test('lease expiry, stalled streams, and invalid data fail closed', (context: Te
       context.mock.timers.tick(4000);
       capture.heartbeat(session);
       context.mock.timers.tick(4001);
+      assert.match(capture.status().message, /reopen the panel/i);
     }
     if (mode === 'invalid') fixture.child.stdout.emit('data', '{"type":"frame","bands":[],"level":0}\n');
     if (mode === 'oversize') fixture.child.stdout.emit('data', 'x'.repeat(33000));
+    if (mode === 'oversize-line') fixture.child.stdout.emit('data', 'x'.repeat(8193) + '\n');
+    if (mode === 'oversize-remainder') fixture.child.stdout.emit('data', JSON.stringify({ type: 'frame', ...frame }) + '\n' + 'x'.repeat(8193));
     assert.ok(fixture.signals.includes('SIGTERM'), mode);
     assert.equal(capture.status().state, mode === 'lease' ? 'stopping' : 'error');
     fixture.child.emit('close', 0);
     capture.dispose();
+  }
+});
+
+test('connection, exit, and startup errors describe an available recovery action', (context: TestContext): void => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const mode of ['connection', 'exit', 'startup']) {
+    const fixture: ReturnType<typeof childFixture> = childFixture();
+    const capture: AudioCapture = new AudioCapture((): void => {}, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+    try {
+      capture.start(session);
+      if (mode === 'connection') fixture.child.stdin.emit('error', new Error('Connection closed'));
+      if (mode === 'exit') fixture.child.emit('close', 1);
+      if (mode === 'startup') {
+        for (let renewal: number = 0; renewal < 29; renewal++) {
+          context.mock.timers.tick(4000);
+          capture.heartbeat(session);
+        }
+        context.mock.timers.tick(4000);
+      }
+      assert.equal(capture.status().state, 'error', mode);
+      assert.match(capture.status().message, /close and reopen the panel/i, mode);
+      assert.doesNotMatch(capture.status().message, /press Start/i, mode);
+    } finally {
+      void capture.dispose(true);
+    }
   }
 });
 

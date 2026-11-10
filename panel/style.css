@@ -68,5 +68,3 @@ summary { cursor: pointer; }
 #audio-preference-status:empty { display: none; }
 .paused .audio-bands span { transition: none; }
 @media (prefers-reduced-motion: reduce) { .audio-bands span { transition: none; } }
-
-.live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--orca-primary, #a6d8ad); margin-left: 5px; }

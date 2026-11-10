@@ -81,6 +81,8 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
       }
     });
     await settle();
+    assert.equal(elements.has('audio-stop'), false, 'The visualizer must not require a Stop button.');
+    assert.equal(elements.has('audio-start'), false, 'Capture eligibility must not depend on a Start button.');
     if (initialPermission !== true) {
       const automatic: Element = elements.get('audio-autostart')!;
       assert.equal(automatic.checked, false, 'Only literal true grants saved consent.');
@@ -122,6 +124,12 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
     context.mock.timers.tick(1000);
     await settle();
     assert.equal(heartbeats, 2, 'Heartbeat renewal must continue after a status response.');
+    for (let toggle: number = 0; toggle < 12; toggle++) {
+      visualizer.setMotionPaused(toggle % 2 === 0);
+      context.mock.timers.tick(500);
+      await settle();
+    }
+    assert.equal(heartbeats, 8, 'Motion changes must not postpone capture heartbeats.');
     for (let cycle: number = 1; cycle <= 3; cycle++) {
       if (cycle === 2) {
         visible(false);

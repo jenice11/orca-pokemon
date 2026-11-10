@@ -56,7 +56,7 @@ export class AudioCapture {
       child.stdout.setEncoding('utf8');
       child.stdout.on('data', (chunk: string): void => { if (this.child === child) this.receive(chunk); });
       child.stderr.resume();
-      child.stdin.on('error', (): void => { if (this.child === child) this.fail('Audio helper connection closed. Press Start to retry.'); });
+      child.stdin.on('error', (): void => { if (this.child === child) this.fail('Audio helper connection closed. Close and reopen the panel to retry.'); });
       child.once('error', (error: NodeJS.ErrnoException): void => {
         if (this.child !== child) return;
         this.fail(error.code === 'ENOENT' ? 'Audio helper is missing. Run sh tools/build-audio-helper.sh on this Mac.' : `Audio helper could not start (${error.code ?? 'unknown error'}).`);
@@ -71,10 +71,10 @@ export class AudioCapture {
           ? { ...this.current, session: null }
           : this.current.state === 'stopping'
             ? { state: 'off', message: 'Off · Spotify is not playing.', session: null }
-            : { state: 'error', message: `Audio helper exited (${code ?? 'signal'}). Press Start to retry.`, session: null };
+            : { state: 'error', message: `Audio helper exited (${code ?? 'signal'}). Close and reopen the panel to retry.`, session: null };
         this.emit('audio.status', this.status());
       });
-      this.startup = setTimeout((): void => this.fail('Audio capture did not start. Check System Settings → Privacy & Security → Screen & System Audio Recording, then press Start again.'), 120000);
+      this.startup = setTimeout((): void => this.fail('Audio capture did not start. Check System Settings → Privacy & Security → Screen & System Audio Recording, then close and reopen the panel to retry.'), 120000);
       this.startup.unref();
       this.heartbeat(session);
     } catch (error: unknown) {
@@ -118,7 +118,6 @@ export class AudioCapture {
 
   private receive(chunk: string): void {
     if (this.current.state !== 'starting' && this.current.state !== 'listening') return;
-    if (chunk.length + this.buffer.length > 32768) { this.fail('Audio helper exceeded its message limit.'); return; }
     this.buffer += chunk;
     let newline: number = this.buffer.indexOf('\n');
     while (newline !== -1) {
@@ -152,7 +151,7 @@ export class AudioCapture {
 
   private expectFrame(): void {
     clearTimeout(this.silence);
-    this.silence = setTimeout((): void => this.fail('Audio stream stopped responding. Press Start to retry.'), 8000);
+    this.silence = setTimeout((): void => this.fail('Audio stream stopped responding. Close and reopen the panel to retry.'), 8000);
     this.silence.unref();
   }
 

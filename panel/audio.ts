@@ -25,8 +25,6 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   const allow: HTMLButtonElement = document.getElementById('audio-allow') as HTMLButtonElement;
   const cancel: HTMLButtonElement = document.getElementById('audio-cancel') as HTMLButtonElement;
   const preferenceNote: HTMLElement = document.getElementById('audio-preference-status')!;
-  const startButton: HTMLButtonElement = document.getElementById('audio-start') as HTMLButtonElement;
-  const stopButton: HTMLButtonElement = document.getElementById('audio-stop') as HTMLButtonElement;
   const session: string = crypto.randomUUID();
   const bars: HTMLElement[] = [];
   let status: AudioStatus = { state: 'off', message: 'Off · Spotify is not playing.', session: null };
@@ -64,11 +62,13 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     label.textContent = active && !owner ? 'Capture active in another panel. Close that panel first.' :
       status.state === 'listening' && paused ? 'Capturing Spotify · display paused.' : status.message;
     label.dataset.state = status.state;
-    startButton.disabled = !initialized || active || status.session !== null;
-    stopButton.disabled = !owner || !active || status.state === 'stopping';
     if (status.state !== 'listening' || paused || !owner) flatten();
-    clearInterval(heartbeat);
-    if (!owner || document.hidden || !['starting', 'listening'].includes(status.state)) return;
+    if (disposed || pageExited || !owner || document.hidden || !['starting', 'listening'].includes(status.state)) {
+      clearInterval(heartbeat);
+      heartbeat = undefined;
+      return;
+    }
+    if (heartbeat !== undefined) return;
     heartbeat = setInterval((): void => {
       if (heartbeatPending || disposed) return;
       heartbeatPending = true;
@@ -104,8 +104,8 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     }
   }
 
-  async function start(manual: boolean = false): Promise<void> {
-    if (disposed || pageExited || document.hidden || !initialized || (!manual && (!preferenceVerified || !savedAutoStart || preferenceSaving)) || (status.state !== 'off' && status.state !== 'error') || status.session !== null) return;
+  async function start(): Promise<void> {
+    if (disposed || pageExited || document.hidden || !initialized || !preferenceVerified || !savedAutoStart || preferenceSaving || (status.state !== 'off' && status.state !== 'error') || status.session !== null) return;
     automaticStartPending = false;
     startupCancelled = true;
     apply({ state: 'starting', session, message: 'Starting · approve system-audio access if macOS asks.' });
@@ -149,6 +149,7 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     revision++;
     if (status.session === session) void bridge.request('audio.stop', { session }).catch((): void => {});
     clearInterval(heartbeat);
+    heartbeat = undefined;
     flatten();
   }
 
@@ -221,10 +222,6 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     } catch { void stop(); label.textContent = 'Invalid audio levels. Capture stopped or will expire within 5 seconds.'; }
   });
 
-  function manualStart(): void { void start(true); }
-  function manualStop(): void { void stop(); }
-  startButton.addEventListener('click', manualStart);
-  stopButton.addEventListener('click', manualStop);
   autoStart.addEventListener('change', automaticStartChanged);
   allow.addEventListener('click', allowAutomaticStart);
   cancel.addEventListener('click', cancelAutomaticStart);
@@ -247,13 +244,11 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     }
     autoStart.disabled = false;
     initialized = true;
-    paint();
     automaticStartPending = savedAutoStart && preferenceUnchanged && !startupCancelled;
     maybeStartAutomatically();
   }).catch((error: unknown): void => {
     if (disposed) return;
     initialized = true;
-    paint();
     autoStart.disabled = false;
     preferenceNote.textContent = 'Could not load automatic-start permission. Capture will not start automatically.';
     if (revision === initialRevision) apply({ state: 'error', session: null, message: error instanceof Error ? error.message : 'Audio helper unavailable.' });
@@ -273,8 +268,6 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
       disposed = true;
       statuses.dispose();
       frames.dispose();
-      startButton.removeEventListener('click', manualStart);
-      stopButton.removeEventListener('click', manualStop);
       autoStart.removeEventListener('change', automaticStartChanged);
       allow.removeEventListener('click', allowAutomaticStart);
       cancel.removeEventListener('click', cancelAutomaticStart);
