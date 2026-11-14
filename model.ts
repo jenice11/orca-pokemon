@@ -4,6 +4,8 @@ export interface AgentRow {
   id: string;
   workspaceId: string;
   workspace: string;
+  projectId: string;
+  projectName: string;
   paneKey: string;
   title: string;
   agent: string;
@@ -36,6 +38,15 @@ export function rosterFromCli(value: unknown): Roster {
     if (typeof workspace.worktreeId !== 'string' || !Array.isArray(workspace.agents)) {
       throw new Error('Orca returned an invalid workspace roster.');
     }
+    const workspaceName: string = typeof workspace.displayName === 'string' ? workspace.displayName : 'Workspace';
+    const identity: unknown = workspace.identity;
+    const executionHostId: unknown = identity !== null && typeof identity === 'object' && !Array.isArray(identity)
+      ? (identity as Record<string, unknown>).executionHostId : undefined;
+    const hostId: string = typeof executionHostId === 'string' && executionHostId ? executionHostId
+      : typeof workspace.hostId === 'string' && workspace.hostId ? workspace.hostId : 'local';
+    const projectId: string = typeof workspace.repoId === 'string' && workspace.repoId
+      ? JSON.stringify([hostId, 'repo', workspace.repoId])
+      : JSON.stringify([hostId, 'workspace', workspace.worktreeId]);
     for (const rawAgent of workspace.agents as unknown[]) {
       const agent: Record<string, unknown> = record(rawAgent);
       // Only proven live PTYs: the CLI also returns historical agent records.
@@ -44,7 +55,9 @@ export function rosterFromCli(value: unknown): Roster {
       agents.push({
         id: JSON.stringify([workspace.worktreeId, agent.paneKey]),
         workspaceId: workspace.worktreeId,
-        workspace: typeof workspace.displayName === 'string' ? workspace.displayName : 'Workspace',
+        workspace: workspaceName,
+        projectId,
+        projectName: typeof workspace.repo === 'string' && workspace.repo ? workspace.repo : workspaceName,
         paneKey: agent.paneKey,
         title: typeof title === 'string' && title ? title : String(agent.agentType ?? 'Agent'),
         agent: typeof agent.agentType === 'string' ? agent.agentType : 'Agent',

@@ -10,7 +10,55 @@ test('roster keeps only proven live agents and does not copy conversation conten
   assert.equal(roster.agents[0].title, '<script>hostile</script>');
   assert.equal(roster.agents[0].state, 'working');
   assert.equal(roster.partial, false);
-  assert.deepEqual(Object.keys(roster.agents[0]).sort(), ['agent', 'id', 'paneKey', 'state', 'title', 'workspace', 'workspaceId']);
+  assert.equal(roster.agents[0].projectName, 'project');
+  assert.equal(roster.agents[0].projectId, JSON.stringify(['local', 'repo', 'project-repo']));
+  assert.equal(roster.agents[0].id, JSON.stringify(['project::/project', 'tab:pane']));
+  assert.deepEqual(Object.keys(roster.agents[0]).sort(), ['agent', 'id', 'paneKey', 'projectId', 'projectName', 'state', 'title', 'workspace', 'workspaceId']);
+});
+
+test('project identity joins worktrees by repo ID, never by display or repo name', (): void => {
+  const workspace: Record<string, unknown> = {
+    worktreeId: 'first', displayName: 'First branch', repo: 'shared-name', repoId: 'repo-a', hostId: 'host-a',
+    agents: [{ paneKey: 'tab:pane', hasLivePty: true }]
+  };
+  const roster: Roster = rosterFromCli({
+    worktrees: [workspace, { ...workspace, worktreeId: 'second', displayName: 'Second branch' },
+      { ...workspace, worktreeId: 'third', repoId: 'repo-b' },
+      { ...workspace, worktreeId: 'fourth', hostId: 'host-b' },
+      { ...workspace, worktreeId: 'fifth', hostId: 'transport', identity: { executionHostId: 'host-a' } }],
+    hostScope: {}
+  });
+  assert.equal(roster.agents[0].projectId, JSON.stringify(['host-a', 'repo', 'repo-a']));
+  assert.equal(roster.agents[0].projectId, roster.agents[1].projectId);
+  assert.notEqual(roster.agents[0].id, roster.agents[1].id);
+  assert.notEqual(roster.agents[0].projectId, roster.agents[2].projectId);
+  assert.notEqual(roster.agents[0].projectId, roster.agents[3].projectId);
+  assert.equal(roster.agents[0].projectId, roster.agents[4].projectId);
+  assert.equal(roster.agents[1].projectName, 'shared-name');
+  assert.equal(roster.agents[1].workspace, 'Second branch');
+});
+
+test('legacy and malformed metadata use host-qualified workspace fallbacks', (): void => {
+  const workspace: Record<string, unknown> = {
+    worktreeId: 'first', displayName: 'Same name', agents: [{ paneKey: 'tab:pane', hasLivePty: true }]
+  };
+  const roster: Roster = rosterFromCli({
+    worktrees: [workspace, { ...workspace, worktreeId: 'second' },
+      { ...workspace, repoId: 'first' },
+      { ...workspace, repoId: 42, repo: null, hostId: 'remote', identity: { executionHostId: 42 } },
+      { ...workspace, displayName: null, hostId: 42, identity: [] },
+      { ...workspace, repoId: '', repo: '', hostId: '', identity: { executionHostId: '' } }],
+    hostScope: {}
+  });
+  assert.equal(roster.agents[0].projectId, JSON.stringify(['local', 'workspace', 'first']));
+  assert.notEqual(roster.agents[0].projectId, roster.agents[1].projectId);
+  assert.notEqual(roster.agents[0].projectId, roster.agents[2].projectId);
+  assert.equal(roster.agents[3].projectId, JSON.stringify(['remote', 'workspace', 'first']));
+  assert.equal(roster.agents[3].projectName, 'Same name');
+  assert.equal(roster.agents[4].projectId, roster.agents[0].projectId);
+  assert.equal(roster.agents[4].projectName, 'Workspace');
+  assert.equal(roster.agents[5].projectId, roster.agents[0].projectId);
+  assert.equal(roster.agents[5].projectName, 'Same name');
 });
 
 test('unknown state is never represented as done or successful', (): void => {

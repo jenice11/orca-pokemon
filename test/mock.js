@@ -6,6 +6,7 @@ const audioListeners = new Map();
 window.fixture = {
   calls: [],
   failStorage: false,
+  failOrderRead: new URL(location.href).searchParams.get('fail-order-read'),
   failAutoRead: new URL(location.href).searchParams.has('fail-auto-read'),
   deferAutoRead: new URL(location.href).searchParams.has('defer-auto-read'),
   resolveAutoRead: null,
@@ -15,6 +16,7 @@ window.fixture = {
   audio: { state: 'off', message: 'Off · Spotify is not playing.', session: null },
   agents: ['working', 'blocked', 'waiting', 'done'].map((state, index) => ({
     id: `fixture-${index}`, workspaceId: 'fixture-workspace', workspace: 'Companion lab',
+    projectId: JSON.stringify(['local', 'repo', 'fixture-repo']), projectName: 'Companion lab',
     paneKey: `tab:${index}`, title: ['Implement auth', 'Review changes', 'Plan migration', 'Write tests'][index],
     agent: ['Claude', 'Codex', 'OpenCode', 'Claude'][index], state
   })),
@@ -30,6 +32,7 @@ window.orca = {
     async call(method, params) {
       window.fixture.calls.push({ method, params });
       if (method === 'storage.get') {
+        if (params.key === window.fixture.failOrderRead) throw new Error('Fixture order read failure');
         if (params.key === 'audio.autostart.v1' && window.fixture.failAutoRead) throw new Error('Fixture preference read failure');
         if (params.key === 'audio.autostart.v1' && window.fixture.deferAutoRead) {
           return new Promise(resolve => { window.fixture.resolveAutoRead = resolve; });
