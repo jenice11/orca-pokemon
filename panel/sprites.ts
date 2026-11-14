@@ -5,12 +5,14 @@ export type SpriteAnimation = {
   height: number;
   columns: number;
   row: number;
+  bottomOffset: number;
   durations: number[];
 };
 
 export type Pokemon = {
   id: number;
   name: string;
+  scale: number;
   animations: { walk: SpriteAnimation; idle: SpriteAnimation; sleep: SpriteAnimation };
 };
 
@@ -18,6 +20,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 1,
     "name": "Bulbasaur",
+    "scale": 2.0,
     "animations": {
       "walk": {
         "path": "../assets/0001/Walk-Anim.png",
@@ -25,6 +28,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 6,
         "row": 2,
+        "bottomOffset": 13,
         "durations": [
           66.66666666666667,
           66.66666666666667,
@@ -40,6 +44,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 3,
         "row": 0,
+        "bottomOffset": 13,
         "durations": [
           666.6666666666666,
           100.0,
@@ -52,6 +57,7 @@ export const POKEMON: Pokemon[] = [
         "height": 24,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 4,
         "durations": [
           500.0,
           583.3333333333334
@@ -62,6 +68,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 4,
     "name": "Charmander",
+    "scale": 1.9230769230769231,
     "animations": {
       "walk": {
         "path": "../assets/0004/Walk-Anim.png",
@@ -69,6 +76,7 @@ export const POKEMON: Pokemon[] = [
         "height": 32,
         "columns": 4,
         "row": 2,
+        "bottomOffset": 9,
         "durations": [
           100.0,
           133.33333333333334,
@@ -82,6 +90,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 4,
         "row": 0,
+        "bottomOffset": 13,
         "durations": [
           200.0,
           133.33333333333334,
@@ -95,6 +104,7 @@ export const POKEMON: Pokemon[] = [
         "height": 24,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 5,
         "durations": [
           500.0,
           583.3333333333334
@@ -105,6 +115,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 7,
     "name": "Squirtle",
+    "scale": 2.1739130434782608,
     "animations": {
       "walk": {
         "path": "../assets/0007/Walk-Anim.png",
@@ -112,6 +123,7 @@ export const POKEMON: Pokemon[] = [
         "height": 32,
         "columns": 4,
         "row": 2,
+        "bottomOffset": 10,
         "durations": [
           200.0,
           133.33333333333334,
@@ -125,6 +137,7 @@ export const POKEMON: Pokemon[] = [
         "height": 32,
         "columns": 8,
         "row": 0,
+        "bottomOffset": 10,
         "durations": [
           500.0,
           33.333333333333336,
@@ -142,6 +155,7 @@ export const POKEMON: Pokemon[] = [
         "height": 24,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 6,
         "durations": [
           500.0,
           583.3333333333334
@@ -152,6 +166,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 25,
     "name": "Pikachu",
+    "scale": 1.6129032258064515,
     "animations": {
       "walk": {
         "path": "../assets/0025/Walk-Anim.png",
@@ -159,6 +174,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 4,
         "row": 2,
+        "bottomOffset": 14,
         "durations": [
           133.33333333333334,
           166.66666666666666,
@@ -172,6 +188,7 @@ export const POKEMON: Pokemon[] = [
         "height": 56,
         "columns": 6,
         "row": 0,
+        "bottomOffset": 22,
         "durations": [
           666.6666666666666,
           33.333333333333336,
@@ -187,6 +204,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 13,
         "durations": [
           500.0,
           583.3333333333334
@@ -197,6 +215,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 39,
     "name": "Jigglypuff",
+    "scale": 1.8518518518518519,
     "animations": {
       "walk": {
         "path": "../assets/0039/Walk-Anim.png",
@@ -204,6 +223,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 5,
         "row": 2,
+        "bottomOffset": 12,
         "durations": [
           100.0,
           66.66666666666667,
@@ -218,6 +238,7 @@ export const POKEMON: Pokemon[] = [
         "height": 32,
         "columns": 5,
         "row": 0,
+        "bottomOffset": 8,
         "durations": [
           416.6666666666667,
           133.33333333333334,
@@ -232,6 +253,7 @@ export const POKEMON: Pokemon[] = [
         "height": 24,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 4,
         "durations": [
           583.3333333333334,
           583.3333333333334
@@ -242,6 +264,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 52,
     "name": "Meowth",
+    "scale": 2.0,
     "animations": {
       "walk": {
         "path": "../assets/0052/Walk-Anim.png",
@@ -249,6 +272,7 @@ export const POKEMON: Pokemon[] = [
         "height": 32,
         "columns": 4,
         "row": 2,
+        "bottomOffset": 10,
         "durations": [
           100.0,
           166.66666666666666,
@@ -262,6 +286,7 @@ export const POKEMON: Pokemon[] = [
         "height": 32,
         "columns": 4,
         "row": 0,
+        "bottomOffset": 10,
         "durations": [
           200.0,
           200.0,
@@ -275,6 +300,7 @@ export const POKEMON: Pokemon[] = [
         "height": 32,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 9,
         "durations": [
           500.0,
           583.3333333333334
@@ -285,6 +311,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 54,
     "name": "Psyduck",
+    "scale": 2.0,
     "animations": {
       "walk": {
         "path": "../assets/0054/Walk-Anim.png",
@@ -292,6 +319,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 4,
         "row": 2,
+        "bottomOffset": 13,
         "durations": [
           133.33333333333334,
           200.0,
@@ -305,6 +333,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 4,
         "row": 0,
+        "bottomOffset": 13,
         "durations": [
           266.6666666666667,
           333.3333333333333,
@@ -318,6 +347,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 13,
         "durations": [
           583.3333333333334,
           583.3333333333334
@@ -328,6 +358,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 94,
     "name": "Gengar",
+    "scale": 1.8518518518518519,
     "animations": {
       "walk": {
         "path": "../assets/0094/Walk-Anim.png",
@@ -335,6 +366,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 4,
         "row": 2,
+        "bottomOffset": 12,
         "durations": [
           133.33333333333334,
           166.66666666666666,
@@ -348,6 +380,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 8,
         "row": 0,
+        "bottomOffset": 10,
         "durations": [
           666.6666666666666,
           66.66666666666667,
@@ -365,6 +398,56 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 10,
+        "durations": [
+          500.0,
+          583.3333333333334
+        ]
+      }
+    }
+  },
+  {
+    "id": 104,
+    "name": "Cubone",
+    "scale": 2.0833333333333335,
+    "animations": {
+      "walk": {
+        "path": "../assets/0104/Walk-Anim.png",
+        "width": 32,
+        "height": 32,
+        "columns": 4,
+        "row": 2,
+        "bottomOffset": 9,
+        "durations": [
+          133.33333333333334,
+          166.66666666666666,
+          133.33333333333334,
+          166.66666666666666
+        ]
+      },
+      "idle": {
+        "path": "../assets/0104/Idle-Anim.png",
+        "width": 32,
+        "height": 40,
+        "columns": 6,
+        "row": 0,
+        "bottomOffset": 13,
+        "durations": [
+          666.6666666666666,
+          16.666666666666668,
+          33.333333333333336,
+          50.0,
+          33.333333333333336,
+          16.666666666666668
+        ]
+      },
+      "sleep": {
+        "path": "../assets/0104/Sleep-Anim.png",
+        "width": 24,
+        "height": 32,
+        "columns": 2,
+        "row": 0,
+        "bottomOffset": 9,
         "durations": [
           500.0,
           583.3333333333334
@@ -375,6 +458,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 133,
     "name": "Eevee",
+    "scale": 1.7857142857142858,
     "animations": {
       "walk": {
         "path": "../assets/0133/Walk-Anim.png",
@@ -382,6 +466,7 @@ export const POKEMON: Pokemon[] = [
         "height": 48,
         "columns": 7,
         "row": 2,
+        "bottomOffset": 19,
         "durations": [
           66.66666666666667,
           66.66666666666667,
@@ -398,6 +483,7 @@ export const POKEMON: Pokemon[] = [
         "height": 32,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 10,
         "durations": [
           266.6666666666667,
           266.6666666666667
@@ -409,6 +495,7 @@ export const POKEMON: Pokemon[] = [
         "height": 24,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 6,
         "durations": [
           500.0,
           583.3333333333334
@@ -419,6 +506,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 143,
     "name": "Snorlax",
+    "scale": 1.4705882352941178,
     "animations": {
       "walk": {
         "path": "../assets/0143/Walk-Anim.png",
@@ -426,6 +514,7 @@ export const POKEMON: Pokemon[] = [
         "height": 48,
         "columns": 4,
         "row": 2,
+        "bottomOffset": 15,
         "durations": [
           133.33333333333334,
           166.66666666666666,
@@ -439,6 +528,7 @@ export const POKEMON: Pokemon[] = [
         "height": 64,
         "columns": 6,
         "row": 0,
+        "bottomOffset": 23,
         "durations": [
           666.6666666666666,
           16.666666666666668,
@@ -454,6 +544,7 @@ export const POKEMON: Pokemon[] = [
         "height": 24,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 5,
         "durations": [
           500.0,
           583.3333333333334
@@ -464,6 +555,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 149,
     "name": "Dragonite",
+    "scale": 1.3513513513513513,
     "animations": {
       "walk": {
         "path": "../assets/0149/Walk-Anim.png",
@@ -471,6 +563,7 @@ export const POKEMON: Pokemon[] = [
         "height": 56,
         "columns": 4,
         "row": 2,
+        "bottomOffset": 21,
         "durations": [
           133.33333333333334,
           200.0,
@@ -484,6 +577,7 @@ export const POKEMON: Pokemon[] = [
         "height": 64,
         "columns": 7,
         "row": 0,
+        "bottomOffset": 25,
         "durations": [
           666.6666666666666,
           33.333333333333336,
@@ -500,6 +594,7 @@ export const POKEMON: Pokemon[] = [
         "height": 40,
         "columns": 2,
         "row": 0,
+        "bottomOffset": 12,
         "durations": [
           500.0,
           583.3333333333334
@@ -510,6 +605,7 @@ export const POKEMON: Pokemon[] = [
   {
     "id": 151,
     "name": "Mew",
+    "scale": 1.5625,
     "animations": {
       "walk": {
         "path": "../assets/0151/Walk-Anim.png",
@@ -517,6 +613,7 @@ export const POKEMON: Pokemon[] = [
         "height": 64,
         "columns": 6,
         "row": 2,
+        "bottomOffset": 28,
         "durations": [
           133.33333333333334,
           133.33333333333334,
@@ -532,6 +629,7 @@ export const POKEMON: Pokemon[] = [
         "height": 56,
         "columns": 4,
         "row": 0,
+        "bottomOffset": 24,
         "durations": [
           200.0,
           133.33333333333334,
@@ -545,6 +643,7 @@ export const POKEMON: Pokemon[] = [
         "height": 56,
         "columns": 6,
         "row": 0,
+        "bottomOffset": 24,
         "durations": [
           266.6666666666667,
           200.0,
@@ -552,6 +651,211 @@ export const POKEMON: Pokemon[] = [
           266.6666666666667,
           200.0,
           266.6666666666667
+        ]
+      }
+    }
+  },
+  {
+    "id": 245,
+    "name": "Suicune",
+    "scale": 1.4705882352941178,
+    "animations": {
+      "walk": {
+        "path": "../assets/0245/Walk-Anim.png",
+        "width": 40,
+        "height": 48,
+        "columns": 4,
+        "row": 2,
+        "bottomOffset": 16,
+        "durations": [
+          166.66666666666666,
+          200.0,
+          166.66666666666666,
+          200.0
+        ]
+      },
+      "idle": {
+        "path": "../assets/0245/Idle-Anim.png",
+        "width": 48,
+        "height": 48,
+        "columns": 14,
+        "row": 0,
+        "bottomOffset": 14,
+        "durations": [
+          1000.0,
+          166.66666666666666,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          33.333333333333336,
+          166.66666666666666
+        ]
+      },
+      "sleep": {
+        "path": "../assets/0245/Sleep-Anim.png",
+        "width": 32,
+        "height": 32,
+        "columns": 2,
+        "row": 0,
+        "bottomOffset": 7,
+        "durations": [
+          500.0,
+          583.3333333333334
+        ]
+      }
+    }
+  },
+  {
+    "id": 393,
+    "name": "Piplup",
+    "scale": 2.272727272727273,
+    "animations": {
+      "walk": {
+        "path": "../assets/0393/Walk-Anim.png",
+        "width": 24,
+        "height": 32,
+        "columns": 4,
+        "row": 2,
+        "bottomOffset": 11,
+        "durations": [
+          133.33333333333334,
+          166.66666666666666,
+          133.33333333333334,
+          166.66666666666666
+        ]
+      },
+      "idle": {
+        "path": "../assets/0393/Idle-Anim.png",
+        "width": 24,
+        "height": 40,
+        "columns": 6,
+        "row": 0,
+        "bottomOffset": 15,
+        "durations": [
+          666.6666666666666,
+          33.333333333333336,
+          66.66666666666667,
+          66.66666666666667,
+          66.66666666666667,
+          33.333333333333336
+        ]
+      },
+      "sleep": {
+        "path": "../assets/0393/Sleep-Anim.png",
+        "width": 24,
+        "height": 24,
+        "columns": 2,
+        "row": 0,
+        "bottomOffset": 5,
+        "durations": [
+          500.0,
+          583.3333333333334
+        ]
+      }
+    }
+  },
+  {
+    "id": 700,
+    "name": "Sylveon",
+    "scale": 1.5625,
+    "animations": {
+      "walk": {
+        "path": "../assets/0700/Walk-Anim.png",
+        "width": 32,
+        "height": 48,
+        "columns": 4,
+        "row": 2,
+        "bottomOffset": 16,
+        "durations": [
+          166.66666666666666,
+          166.66666666666666,
+          166.66666666666666,
+          166.66666666666666
+        ]
+      },
+      "idle": {
+        "path": "../assets/0700/Idle-Anim.png",
+        "width": 32,
+        "height": 48,
+        "columns": 8,
+        "row": 0,
+        "bottomOffset": 16,
+        "durations": [
+          116.66666666666667,
+          116.66666666666667,
+          116.66666666666667,
+          116.66666666666667,
+          116.66666666666667,
+          116.66666666666667,
+          116.66666666666667,
+          116.66666666666667
+        ]
+      },
+      "sleep": {
+        "path": "../assets/0700/Sleep-Anim.png",
+        "width": 32,
+        "height": 24,
+        "columns": 2,
+        "row": 0,
+        "bottomOffset": 3,
+        "durations": [
+          500.0,
+          583.3333333333334
+        ]
+      }
+    }
+  },
+  {
+    "id": 835,
+    "name": "Yamper",
+    "scale": 1.9230769230769231,
+    "animations": {
+      "walk": {
+        "path": "../assets/0835/Walk-Anim.png",
+        "width": 32,
+        "height": 48,
+        "columns": 7,
+        "row": 2,
+        "bottomOffset": 18,
+        "durations": [
+          100.0,
+          66.66666666666667,
+          100.0,
+          100.0,
+          66.66666666666667,
+          100.0,
+          66.66666666666667
+        ]
+      },
+      "idle": {
+        "path": "../assets/0835/Idle-Anim.png",
+        "width": 24,
+        "height": 32,
+        "columns": 2,
+        "row": 0,
+        "bottomOffset": 9,
+        "durations": [
+          1000.0,
+          266.6666666666667
+        ]
+      },
+      "sleep": {
+        "path": "../assets/0835/Sleep-Anim.png",
+        "width": 24,
+        "height": 16,
+        "columns": 2,
+        "row": 0,
+        "bottomOffset": 1,
+        "durations": [
+          500.0,
+          583.3333333333334
         ]
       }
     }

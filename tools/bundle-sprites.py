@@ -10,6 +10,7 @@ import json
 import struct
 import urllib.request
 import xml.etree.ElementTree as ET
+import zlib
 from pathlib import Path
 from typing import TypedDict
 
@@ -21,7 +22,8 @@ ROOT: Path = Path(__file__).resolve().parents[1]
 SPECIES: tuple[tuple[int, str], ...] = (
     (1, "Bulbasaur"), (4, "Charmander"), (7, "Squirtle"), (25, "Pikachu"),
     (39, "Jigglypuff"), (52, "Meowth"), (54, "Psyduck"), (94, "Gengar"),
-    (133, "Eevee"), (143, "Snorlax"), (149, "Dragonite"), (151, "Mew"),
+    (104, "Cubone"), (133, "Eevee"), (143, "Snorlax"), (149, "Dragonite"), (151, "Mew"),
+    (245, "Suicune"), (393, "Piplup"), (700, "Sylveon"), (835, "Yamper"),
 )
 ANIMATIONS: tuple[str, ...] = ("Walk", "Idle", "Sleep")
 
@@ -32,12 +34,14 @@ class Animation(TypedDict):
     height: int
     columns: int
     row: int
+    bottomOffset: int
     durations: list[float]
 
 
 class Pokemon(TypedDict):
     id: int
     name: str
+    scale: float
     animations: dict[str, Animation]
 
 
@@ -70,6 +74,92 @@ def resolve_animation(anims: dict[str, ET.Element], name: str) -> tuple[str, ET.
         if target is None:
             return name, animation
         name = target.strip()
+
+
+def png_alpha(data: bytes) -> bytes:
+    width, height = png_size(data)
+    if struct.unpack(">I", data[8:12])[0] != 13 or data[24:29] != bytes((8, 6, 0, 0, 0)):
+        raise ValueError("PNG must be RGBA 8-bit noninterlaced")
+    stride: int = width * 4
+    expected: int = (stride + 1) * height
+    if expected > 50 * 1024 * 1024:
+        raise ValueError("Oversized decoded PNG")
+    compressed: bytearray = bytearray()
+    position: int = 8
+    ended: bool = False
+    while position < len(data):
+        if position + 12 > len(data):
+            raise ValueError("Truncated PNG chunk")
+        length: int = struct.unpack(">I", data[position:position + 4])[0]
+        kind: bytes = data[position + 4:position + 8]
+        end: int = position + 8 + length
+        if end + 4 > len(data):
+            raise ValueError("Truncated PNG chunk")
+        if zlib.crc32(data[position + 4:end]) != struct.unpack(">I", data[end:end + 4])[0]:
+            raise ValueError("Invalid PNG checksum")
+        if kind == b"IDAT":
+            compressed.extend(data[position + 8:end])
+        position = end + 4
+        if kind == b"IEND":
+            ended = True
+            break
+    if not ended:
+        raise ValueError("Missing PNG end")
+    decoder = zlib.decompressobj()
+    raw: bytes = decoder.decompress(compressed, expected + 1)
+    if len(raw) != expected or not decoder.eof or decoder.unused_data:
+        raise ValueError("Invalid PNG decompressed length")
+    alpha: bytearray = bytearray()
+    previous: bytearray = bytearray(stride)
+    for y in range(height):
+        start: int = y * (stride + 1)
+        mode: int = raw[start]
+        if mode > 4:
+            raise ValueError("Unsupported PNG filter")
+        current: bytearray = bytearray(raw[start + 1:start + 1 + stride])
+        for x in range(stride):
+            left: int = current[x - 4] if x >= 4 else 0
+            up: int = previous[x]
+            corner: int = previous[x - 4] if x >= 4 else 0
+            predictor: int = 0
+            if mode == 1:
+                predictor = left
+            elif mode == 2:
+                predictor = up
+            elif mode == 3:
+                predictor = (left + up) // 2
+            elif mode == 4:
+                p: int = left + up - corner
+                a, b, c = abs(p - left), abs(p - up), abs(p - corner)
+                predictor = left if a <= b and a <= c else up if b <= c else corner
+            current[x] = (current[x] + predictor) & 255
+        alpha.extend(current[3::4])
+        previous = current
+    return bytes(alpha)
+
+
+def opaque_bounds(data: bytes, width: int, height: int, columns: int, row: int) -> tuple[int, int, int, int]:
+    sheet_width, sheet_height = png_size(data)
+    if width <= 0 or height <= 0 or columns <= 0 or sheet_width != width * columns or row < 0 or (row + 1) * height > sheet_height:
+        raise ValueError("Invalid offset frame geometry")
+    alpha: bytes = png_alpha(data)
+    left: int = width
+    top: int = height
+    right: int = 0
+    bottom: int = 0
+    for y in range(row * height, (row + 1) * height):
+        for x in range(sheet_width):
+            if alpha[y * sheet_width + x]:
+                left, top = min(left, x % width), min(top, y % height)
+                right, bottom = max(right, x % width + 1), max(bottom, y % height + 1)
+    if right == 0:
+        raise ValueError("Selected PNG animation row is fully transparent")
+    return left, top, right, bottom
+
+
+def bottom_offset(data: bytes, width: int, height: int, columns: int, row: int) -> int:
+    # One shared offset preserves the original vertical motion between frames.
+    return height - opaque_bounds(data, width, height, columns, row)[3]
 
 
 def obtain(source: str, local: str, check: bool, assets: list[Asset]) -> bytes:
@@ -125,6 +215,7 @@ def main() -> None:
         credits: bytes = obtain(f"{upstream}/credits.txt", f"{local}/credits.txt", check, assets)
         anims: dict[str, ET.Element] = {element.findtext("Name", ""): element for element in ET.fromstring(xml).findall("./Anims/Anim")}
         animations: dict[str, Animation] = {}
+        bounds: dict[str, tuple[int, int, int, int]] = {}
         requested: str
         for requested in ANIMATIONS:
             resolved: str
@@ -144,9 +235,12 @@ def main() -> None:
             rows: int = sheet_height // height
             if columns != len(ticks) or not ticks or any(tick <= 0 for tick in ticks):
                 raise ValueError(f"Invalid frame durations: {species} {requested}")
+            row: int = min(2 if requested == "Walk" else 0, rows - 1)
+            bounds[requested.lower()] = opaque_bounds(data, width, height, columns, row)
             animations[requested.lower()] = {
                 "path": f"../{local}/{filename}", "width": width, "height": height,
-                "columns": columns, "row": min(2 if requested == "Walk" else 0, rows - 1),
+                "columns": columns, "row": row,
+                "bottomOffset": height - bounds[requested.lower()][3],
                 "durations": [tick * 1000 / 60 for tick in ticks],
             }
             contributors: list[str] = []
@@ -166,7 +260,18 @@ def main() -> None:
             if not contributors:
                 raise ValueError(f"Missing named credits: {species} {requested}")
             credit_rows.append(f"| {number} {species} | {requested} | {', '.join(contributors)} | [{resolved}]({REPOSITORY}/tree/{COMMIT}/{upstream}) |")
-        pokemon.append({"id": number, "name": species, "animations": animations})
+        walk: Animation = animations["walk"]
+        idle: Animation = animations["idle"]
+        # Source frames share a center anchor; retain idle hovering relative to walking feet.
+        idle["bottomOffset"] = min(idle["bottomOffset"], (idle["height"] - walk["height"]) // 2 + walk["bottomOffset"])
+        awake_size: int = max(max(bounds[name][2] - bounds[name][0], bounds[name][3] - bounds[name][1]) for name in ("walk", "idle"))
+        # Normalize once per species; every pose must fit without changing its native proportions.
+        scale: float = min(
+            50 / awake_size,
+            *(88 / (2 * max(animation["width"] / 2 - bounds[name][0], bounds[name][2] - animation["width"] / 2)) for name, animation in animations.items()),
+            *(50 / (animation["height"] - animation["bottomOffset"] - bounds[name][1]) for name, animation in animations.items()),
+        )
+        pokemon.append({"id": number, "name": species, "scale": scale, "animations": animations})
     typescript: str = """// Generated by python3 tools/bundle-sprites.py. Do not edit by hand.
 export type SpriteAnimation = {
   path: string;
@@ -174,12 +279,14 @@ export type SpriteAnimation = {
   height: number;
   columns: number;
   row: number;
+  bottomOffset: number;
   durations: number[];
 };
 
 export type Pokemon = {
   id: number;
   name: string;
+  scale: number;
   animations: { walk: SpriteAnimation; idle: SpriteAnimation; sleep: SpriteAnimation };
 };
 
@@ -199,7 +306,7 @@ Pokémon and related characters and marks belong to Nintendo, Creatures Inc., an
 
 ## Modifications and reproduction
 
-No PNG modifications or crops: sheets are stored byte-for-byte as downloaded. CopyOf aliases use the resolved source sheet under the requested local filename. Only generated playback metadata changes representation: durations convert 60fps ticks to milliseconds, Walk selects right-facing row 2, Idle/Sleep select row 0, and row indices clamp to existing rows. Original XML and per-species credit logs remain bundled.
+No PNG modifications or crops: sheets are stored byte-for-byte as downloaded. CopyOf aliases use the resolved source sheet under the requested local filename. Only generated playback metadata changes representation: durations convert 60fps ticks to milliseconds, Walk selects right-facing row 2, Idle/Sleep select row 0, and row indices clamp to existing rows. Walk and Sleep bottomOffset is calculated in source pixels as the minimum transparent bottom padding across the selected row's frames, preserving original frame motion. Idle uses the walking ground relative to the source frame center, capped at its opaque bottom to retain hovering without sinking. One scale per species normalizes the largest awake opaque dimension to 50 CSS pixels, constrained by every pose's centered 88-pixel width and 50-pixel above-ground extent. Sleeping poses retain their source proportions and all poses share that scale. Original XML and per-species credit logs remain bundled.
 
 Run `python3 tools/bundle-sprites.py` to download and regenerate; run `python3 tools/bundle-sprites.py --check` to validate locally with no network or writes. [Provenance](assets/provenance.json) records pinned download URLs and SHA256 for every downloaded file. Named contributors below are resolved from upstream [credit_names.txt](assets/credit_names.txt); original per-species `credits.txt` retains submission history and animation scopes. Historical contributors are retained rather than discarded.
 
@@ -215,7 +322,7 @@ Run `python3 tools/bundle-sprites.py` to download and regenerate; run `python3 t
     size: int = sum(path.stat().st_size for path in files)
     if len(files) > 2000 or size > 50 * 1024 * 1024:
         raise ValueError(f"Bundle limit exceeded: {len(files)} files, {size} bytes")
-    print(f"{'Validated offline' if check else 'Bundled'}: {len(pokemon)} species, 36 animations, {len(files)} asset files, {size} bytes")
+    print(f"{'Validated offline' if check else 'Bundled'}: {len(pokemon)} species, {len(pokemon) * len(ANIMATIONS)} animations, {len(files)} asset files, {size} bytes")
 
 
 if __name__ == "__main__":

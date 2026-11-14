@@ -448,7 +448,7 @@ function animateSprite(companion: Companion): void {
   const sheet: SpriteAnimation = companion.species.animations[
     state === 'working' ? 'walk' : state === 'done' ? 'sleep' : 'idle'
   ];
-  const scale: number = Math.min(2, 88 / sheet.width, 80 / sheet.height);
+  const scale: number = companion.species.scale;
   const width: number = sheet.width * scale;
   const height: number = sheet.height * scale;
   const sprite: HTMLElement = companion.sprite;
@@ -457,6 +457,7 @@ function animateSprite(companion: Companion): void {
   sprite.style.backgroundImage = `url("${sheet.path}")`;
   sprite.style.backgroundSize = `${width * sheet.columns}px auto`;
   sprite.style.backgroundPosition = `0px ${-sheet.row * height}px`;
+  sprite.style.transform = `translateY(${sheet.bottomOffset * scale}px)`;
   if (paused || state === 'unknown') return;
   const durations: number[] = sheet.durations.slice(0, sheet.columns);
   const total: number = durations.reduce((sum: number, duration: number): number => sum + duration, 0);

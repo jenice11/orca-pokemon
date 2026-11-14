@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node --test model.test.ts order.test.ts worker.test.ts cli.test.ts audio-capture.test.ts audio-theme.test.ts audio-panel.test.ts",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
-    "verify": "npm run typecheck && npm test",
+    "verify": "npm run typecheck && npm test && python3 -m unittest tools/test_bundle_sprites.py && python3 tools/bundle-sprites.py --check",
     "preview": "node tools/preview.ts"
   },
   "devDependencies": {
