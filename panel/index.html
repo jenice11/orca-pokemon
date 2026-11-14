@@ -9,10 +9,9 @@
   <body>
     <header>
       <div class="heading"><h1>Poké crew</h1><button id="refresh" type="button">Refresh</button></div>
-      <p>Your agents, a little more alive.</p>
     </header>
     <main>
-      <div class="toolbar"><span id="summary" role="status">Finding your crew…</span><button id="motion" type="button" aria-pressed="false">Pause motion</button></div>
+      <div class="toolbar"><span id="summary" role="status">Finding your crew…</span><div class="order-toolbar"><label for="agent-sort">Sort</label><select id="agent-sort" disabled><option value="manual">Manual</option><option value="attention">Needs attention first</option><option value="name">Name</option></select></div><button id="motion" type="button" aria-pressed="false">Pause</button></div>
       <section class="audio-card" aria-labelledby="audio-title">
         <div class="audio-heading"><h2 id="audio-title">Spotify</h2><span class="audio-local">Desktop</span></div>
         <div id="audio-bands" class="audio-bands" role="img" aria-label="Spotify output frequency spectrum"></div>
@@ -26,15 +25,22 @@
         </div>
         <p id="audio-preference-status" role="status"></p>
       </section>
+      <p id="order-announcement" class="visually-hidden" role="status"></p>
       <p id="error" role="alert" hidden></p>
       <p id="partial" class="notice" hidden>Partial roster: some workspaces or hosts were not returned.</p>
       <section id="agents" aria-label="Live terminal agents"></section>
       <div id="empty" class="empty" hidden><div class="pokeball" aria-hidden="true"></div><h2>No companions yet</h2><p>Start an agent in an Orca terminal.<br />Your Pokémon will appear here.</p></div>
+      <footer>
+        <p>Click a Pokémon to focus its agent.<br />Click its Poké Ball to search species.</p>
+        <details><summary>About &amp; credits</summary><p>12 bundled Pokémon. Live terminal agents on this Orca host and its reachable SSH hosts; not structured chats or paired servers. Refresh after an agent exits.</p><p>Inspired by mathieucroset/herdr-pokemon-agents (MIT). Sprite art: PMDCollab / SpriteCollab contributors, CC BY-NC 4.0. Full artist credits and source links: ATTRIBUTION.md in this plugin.</p><p>Noncommercial fan project. Pokémon © Nintendo, Creatures, GAME FREAK. Not affiliated or endorsed.</p></details>
+      </footer>
     </main>
-    <footer>
-      <p>Click a Pokémon to focus its agent.<br />Choose a species below each companion.</p>
-      <details><summary>About &amp; credits</summary><p>12 bundled Pokémon. Live terminal agents on this Orca host and its reachable SSH hosts; not structured chats or paired servers. Refresh after an agent exits.</p><p>Inspired by mathieucroset/herdr-pokemon-agents (MIT). Sprite art: PMDCollab / SpriteCollab contributors, CC BY-NC 4.0. Full artist credits and source links: ATTRIBUTION.md in this plugin.</p><p>Noncommercial fan project. Pokémon © Nintendo, Creatures, GAME FREAK. Not affiliated or endorsed.</p></details>
-    </footer>
+    <div id="species-panel" popover="manual" role="dialog" aria-label="Choose Pokémon">
+      <input id="species-search" type="search" role="combobox" aria-label="Search Pokémon" aria-autocomplete="list" aria-expanded="true" aria-controls="species-results" placeholder="Search Pokémon…" autocomplete="off" />
+      <div id="species-results" role="listbox" aria-label="Pokémon species"></div>
+      <p id="species-empty" role="status" hidden>No Pokémon found.</p>
+    </div>
+    <div id="workspace-tooltip" class="workspace-tooltip" role="tooltip" hidden><span id="workspace-tooltip-text"></span></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

@@ -7,7 +7,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import assert from 'node:assert/strict';
 
 const root: string = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const types: Record<string, string> = { '.html': 'text/html', '.ts': 'text/javascript', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
+const types: Record<string, string> = { '.html': 'text/html', '.ts': 'text/javascript', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml' };
 
 function previewPath(url: string): string {
   const path: string = resolve(root, `.${decodeURIComponent(new URL(url, 'http://localhost').pathname)}`);
