@@ -11,7 +11,8 @@ function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-function checkbox(): HTMLInputElement { return document.getElementById('audio-autostart') as HTMLInputElement; }
+function entry(): HTMLButtonElement { return button('audio-enable'); }
+function approved(): boolean { return !button('audio-disable').hidden; }
 function button(id: string): HTMLButtonElement { return document.getElementById(id) as HTMLButtonElement; }
 function confirmation(): HTMLElement { return document.getElementById('audio-consent')!; }
 function starts(): number { return fixture.calls.filter((call): boolean => call.name === 'audio.start').length; }
@@ -29,20 +30,20 @@ async function until(condition: () => boolean): Promise<void> {
 
 export async function consent(): Promise<string[]> {
   check(typeof fixture !== 'undefined', 'Consent tests require the mock preview.');
-  await until((): boolean => !checkbox().disabled);
+  await until((): boolean => !entry().disabled);
   check(document.getElementById('audio-start') === null, 'Capture must not expose a Start button.');
-  check(!checkbox().checked && starts() === 0, 'Default must be off.');
-  checkbox().click();
-  check(!confirmation().hidden && !checkbox().checked, 'Checking must ask permission, not grant it.');
+  check(!approved() && starts() === 0, 'Default must be off.');
+  entry().click();
+  check(!confirmation().hidden && !approved(), 'Entry control must ask permission, not grant it.');
   check(preferenceWrites().length === 0 && starts() === 0, 'Opening consent must not save or capture.');
   button('audio-cancel').click();
   check(confirmation().hidden && preferenceWrites().length === 0, 'Cancel must write nothing.');
 
   fixture.failStorage = true;
-  checkbox().click();
+  entry().click();
   button('audio-allow').click();
-  await until((): boolean => !checkbox().disabled);
-  check(!checkbox().checked && starts() === 0, 'Failed permission save must not enable automatic capture.');
+  await until((): boolean => !entry().disabled);
+  check(!approved() && starts() === 0, 'Failed permission save must not enable automatic capture.');
   check(document.getElementById('audio-preference-status')!.textContent!.includes('Could not save'), 'Save failure must remain visible.');
   fixture.failStorage = false;
   button('audio-cancel').click();
@@ -58,40 +59,40 @@ export async function consent(): Promise<string[]> {
   fixture.notifyStorage('audio.autostart.v1');
   await until((): boolean => resolveOldRead !== undefined);
   orca.host.call = call;
-  checkbox().click();
+  entry().click();
   button('audio-allow').click();
-  await until((): boolean => !checkbox().disabled && checkbox().checked);
+  await until((): boolean => !entry().disabled && approved());
   check(confirmation().hidden && preferenceWrites().includes(true), 'Allow must persist consent.');
   resolveOldRead!({ value: false });
   await new Promise<number>(requestAnimationFrame);
-  check(checkbox().checked, 'An old preference read must not hide newly saved consent.');
+  check(approved(), 'An old preference read must not hide newly saved consent.');
   check(starts() === 1, 'Verified saved consent must start the current visible idle panel exactly once.');
   await until((): boolean => fixture.audio.state === 'starting');
   window.dispatchEvent(new Event('pagehide'));
   await until((): boolean => fixture.audio.state === 'off');
-  check(checkbox().checked && !preferenceWrites().includes(false), 'Closing the panel must retain remembered consent.');
+  check(approved() && !preferenceWrites().includes(false), 'Closing the panel must retain remembered consent.');
   return ['default off', 'confirmation required', 'Cancel writes nothing', 'failed save stays off', 'Allow persists consent', 'closing retains consent'];
 }
 
 export async function remembered(): Promise<string[]> {
   check(typeof fixture !== 'undefined', 'Remembered-consent tests require the mock preview.');
-  await until((): boolean => !checkbox().disabled && fixture.audio.state === 'starting');
-  check(checkbox().checked && confirmation().hidden && starts() === 1, 'Remembered consent must start exactly once without another prompt.');
+  await until((): boolean => !entry().disabled && fixture.audio.state === 'starting');
+  check(approved() && entry().hidden && confirmation().hidden && starts() === 1, 'Remembered consent must start exactly once without another prompt.');
   window.dispatchEvent(new Event('pagehide'));
   await until((): boolean => fixture.audio.state === 'off');
   window.dispatchEvent(new Event('pageshow'));
   await new Promise<number>(requestAnimationFrame);
-  check(starts() === 1 && checkbox().checked, 'Page exit must not trigger an automatic restart.');
+  check(starts() === 1 && approved(), 'Page exit must not trigger an automatic restart.');
 
   fixture.failStorage = true;
-  checkbox().click();
-  await until((): boolean => !checkbox().disabled);
-  check(checkbox().checked && document.getElementById('audio-preference-status')!.textContent!.includes('Future panels may still start'), 'Failed revoke must warn about persisted consent.');
+  button('audio-disable').click();
+  await until((): boolean => !entry().disabled);
+  check(approved() && document.getElementById('audio-preference-status')!.textContent!.includes('Future panels may still start'), 'Failed revoke must warn about persisted consent.');
   fixture.failStorage = false;
-  checkbox().click();
-  await until((): boolean => !checkbox().disabled && !checkbox().checked);
-  check(preferenceWrites().includes(false) && fixture.audio.state === 'off', 'Unchecking must persist revocation.');
-  return ['reload uses saved consent exactly once', 'page exit never loops', 'failed revocation warns', 'unchecking saves false'];
+  button('audio-disable').click();
+  await until((): boolean => !entry().disabled && !approved());
+  check(preferenceWrites().includes(false) && fixture.audio.state === 'off', 'Disable visualizer must persist revocation.');
+  return ['reload uses saved consent exactly once', 'page exit never loops', 'failed revocation warns', 'disable saves false'];
 }
 
 export async function delayedRead(): Promise<string[]> {
@@ -99,7 +100,7 @@ export async function delayedRead(): Promise<string[]> {
   await until((): boolean => fixture.resolveAutoRead !== null);
   window.dispatchEvent(new Event('pagehide'));
   fixture.resolveAutoRead!({ value: true });
-  await until((): boolean => !checkbox().disabled);
+  await until((): boolean => !entry().disabled);
   window.dispatchEvent(new Event('pageshow'));
   check(starts() === 0 && fixture.audio.state === 'off', 'Late saved consent must not capture after page exit.');
   return ['late preference response cannot defeat page exit'];
@@ -107,7 +108,7 @@ export async function delayedRead(): Promise<string[]> {
 
 export async function failedRead(): Promise<string[]> {
   check(typeof fixture !== 'undefined', 'Read-failure tests require the mock preview.');
-  await until((): boolean => !checkbox().disabled);
-  check(starts() === 0 && !checkbox().checked, 'Unreadable preferences must fail closed.');
+  await until((): boolean => !entry().disabled);
+  check(starts() === 0 && !approved(), 'Unreadable preferences must fail closed.');
   return ['failed preference read never starts capture'];
 }

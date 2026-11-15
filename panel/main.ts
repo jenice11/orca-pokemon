@@ -733,7 +733,7 @@ async function start(): Promise<void> {
   window.addEventListener('resize', hideWorkspaceTooltip);
   document.addEventListener('keydown', (event: KeyboardEvent): void => { if (event.key === 'Escape') hideWorkspaceTooltip(); });
   updateMotion();
-  refreshButton.addEventListener('click', (): void => { sortRequested = true; void refresh(); });
+  refreshButton.addEventListener('click', (): void => { sortRequested = true; audioVisualizer?.refresh(); void refresh(); });
   sortSelect.addEventListener('change', (): void => {
     sortMode = sortSelect.value === 'attention' || sortSelect.value === 'name' ? sortSelect.value : 'manual';
     finishDrag();

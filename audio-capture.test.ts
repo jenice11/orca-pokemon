@@ -75,6 +75,38 @@ test('explicit start is single-flight, streams validated frames, and stop closes
   capture.dispose();
 });
 
+test('ready capture with silent frames never claims Spotify playback', (context: TestContext): void => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const statuses: AudioStatus[] = [];
+  const frames: AudioFrame[] = [];
+  const capture: AudioCapture = new AudioCapture((name, payload): void => {
+    if (name === 'audio.status') statuses.push(payload as AudioStatus);
+    else frames.push(payload as AudioFrame);
+  }, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+  try {
+    capture.start(session);
+    fixture.child.stdout.emit('data', '{"type":"ready"}\n');
+    assert.equal(capture.status().message, 'Capturing Spotify output.');
+    const silent: AudioFrame = { bands: Array<number>(AUDIO_BANDS).fill(0), level: 0 };
+    for (let second: number = 0; second < 10; second++) {
+      context.mock.timers.tick(1000);
+      capture.heartbeat(session);
+      fixture.child.stdout.emit('data', JSON.stringify({ type: 'frame', ...silent }) + '\n');
+    }
+    assert.equal(capture.status().state, 'listening');
+    assert.equal(capture.status().message, 'Capturing Spotify output.');
+    assert.equal(frames.length, 10);
+    assert.ok(frames.every((value): boolean => value.level === 0 && value.bands.every((band): boolean => band === 0)));
+    assert.ok(statuses.every((value): boolean => !/playing/i.test(value.message)));
+    capture.stop(session);
+    fixture.child.emit('close', 0);
+    assert.equal(capture.status().message, 'Audio capture off.');
+  } finally {
+    void capture.dispose(true);
+  }
+});
+
 test('valid audio messages can arrive in one large stdout chunk', (): void => {
   const fixture: ReturnType<typeof childFixture> = childFixture();
   const capture: AudioCapture = new AudioCapture((): void => {}, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');

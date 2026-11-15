@@ -102,21 +102,31 @@ summary { cursor: pointer; }
 @keyframes breathe { 50% { transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { .actor { animation: none !important; } }
 @media (max-width: 270px) { main { padding: 10px; } }
-.audio-card { margin-bottom: 14px; padding: 12px; border: 1px solid var(--orca-border, #363a43); border-radius: var(--orca-radius, 10px); background: var(--orca-card, #20232a); }
+.audio-card { flex-shrink: 0; max-height: 50dvh; overflow-y: auto; margin: 0 14px 10px; padding: 10px; border: 1px solid var(--orca-border, #363a43); border-radius: var(--orca-radius, 10px); background: var(--orca-card, #20232a); }
 .audio-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
 .audio-heading h2 { font-size: 12px; font-weight: 600; margin: 0; }
 .audio-local { font: 8px ui-monospace, monospace; letter-spacing: .08em; color: var(--orca-muted-foreground, #acb0bb); }
-.audio-bands { display: flex; align-items: stretch; gap: 3px; height: 54px; margin: 16px 0 8px; border-bottom: 1px solid var(--orca-border, #363a43); overflow: hidden; }
+.audio-bands { display: flex; align-items: stretch; gap: 3px; height: 37px; margin: 8px 0 4px; border-bottom: 1px solid var(--orca-border, #363a43); overflow: hidden; }
 .audio-bands span { flex: 1; min-width: 0; border-radius: 2px 2px 0 0; background: linear-gradient(to top, var(--audio-low, #5865d4), var(--audio-middle, #60a5fa) 55%, var(--audio-high, #8de5f9)); transform-origin: bottom; transition: transform 90ms linear; }
-#audio-status { min-height: 30px; font-size: 10px; color: var(--orca-muted-foreground, #acb0bb); overflow-wrap: anywhere; margin: 7px 0; }
+.audio-bands[hidden], .audio-loader[hidden], .audio-idle[hidden] { display: none; }
+.audio-loader, .audio-idle { height: 37px; margin: 8px 0 4px; display: flex; align-items: center; justify-content: center; }
+.audio-idle .sprite { width: 46.25px; height: 27.75px; background-image: url('../assets/0143/Sleep-Anim.png'); background-size: 92.5px auto; }
+.audio-loader span { width: 16px; height: 16px; border: 2px solid var(--orca-border, #363a43); border-top-color: var(--orca-primary, #a6d8ad); border-radius: 50%; animation: audio-loading .8s linear infinite; }
+@keyframes audio-loading { to { transform: rotate(360deg); } }
+#audio-status[data-quiet="true"] { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.paused .audio-loader span { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .audio-loader span { animation: none; } }
+#audio-status { font-size: 10px; color: var(--orca-muted-foreground, #acb0bb); overflow-wrap: anywhere; margin: 4px 0; }
 #audio-status[data-state="error"] { color: var(--orca-destructive, #ff9595); }
 .audio-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .audio-controls button { font-size: 10px; min-height: 30px; }
-.audio-autostart { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px; font-size: 10px; cursor: pointer; }
-.audio-autostart input { margin: 2px 0 0; accent-color: var(--audio-middle, var(--orca-primary)); }
-.audio-consent { margin-top: 10px; padding: 10px; border: 1px solid var(--orca-border, #363a43); border-radius: 6px; }
+.audio-settings { margin: 10px 0; }
+.audio-consent { box-sizing: border-box; width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; margin: auto; padding: 16px; border: 1px solid var(--orca-border, #363a43); border-radius: var(--orca-radius, 10px); background: var(--orca-card, #20232a); color: var(--orca-foreground, #e8e8ed); text-align: left; }
+.audio-consent::backdrop { background: #0008; }
 .audio-consent h3 { margin: 0; font-size: 11px; }
 .audio-consent p { font-size: 10px; color: var(--orca-muted-foreground, #acb0bb); }
 #audio-preference-status:empty { display: none; }
+#audio-consent-error:empty { display: none; }
+#audio-consent-error { color: var(--orca-destructive, #ff9595); }
 .paused .audio-bands span { transition: none; }
 @media (prefers-reduced-motion: reduce) { .audio-bands span { transition: none; } }

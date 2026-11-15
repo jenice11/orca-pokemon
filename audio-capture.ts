@@ -12,7 +12,7 @@ function launchHelper(): ChildProcessWithoutNullStreams {
 
 export class AudioCapture {
   private child: ChildProcessWithoutNullStreams | null = null;
-  private current: AudioStatus = { state: 'off', message: 'Off · Spotify is not playing.', session: null };
+  private current: AudioStatus = { state: 'off', message: 'Audio capture off.', session: null };
   private buffer: string = '';
   private lease: ReturnType<typeof setTimeout> | undefined;
   private startup: ReturnType<typeof setTimeout> | undefined;
@@ -70,7 +70,7 @@ export class AudioCapture {
         this.current = this.current.state === 'error'
           ? { ...this.current, session: null }
           : this.current.state === 'stopping'
-            ? { state: 'off', message: 'Off · Spotify is not playing.', session: null }
+            ? { state: 'off', message: 'Audio capture off.', session: null }
             : { state: 'error', message: `Audio helper exited (${code ?? 'signal'}). Close and reopen the panel to retry.`, session: null };
         this.emit('audio.status', this.status());
       });
@@ -129,7 +129,7 @@ export class AudioCapture {
         if (message === null || typeof message !== 'object' || !('type' in message)) throw new Error('Invalid audio message.');
         if (message.type === 'ready' && this.current.state === 'starting') {
           clearTimeout(this.startup);
-          this.current = { ...this.current, state: 'listening', message: 'Spotify playing.' };
+          this.current = { ...this.current, state: 'listening', message: 'Capturing Spotify output.' };
           this.emit('audio.status', this.status());
           this.expectFrame();
         } else if (message.type === 'frame' && this.current.state === 'listening') {

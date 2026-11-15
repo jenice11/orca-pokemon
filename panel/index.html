@@ -12,19 +12,6 @@
     </header>
     <main>
       <div class="toolbar"><span id="summary" role="status">Finding your crew…</span><div class="order-toolbar"><label for="agent-sort">Sort</label><select id="agent-sort" disabled><option value="manual">Manual</option><option value="attention">Needs attention first</option><option value="name">Name</option></select></div><button id="motion" type="button" aria-pressed="false">Pause</button></div>
-      <section class="audio-card" aria-labelledby="audio-title">
-        <div class="audio-heading"><h2 id="audio-title">Spotify</h2><span class="audio-local">Desktop</span></div>
-        <div id="audio-bands" class="audio-bands" role="img" aria-label="Spotify output frequency spectrum"></div>
-        <p id="audio-status" role="status">Off · Spotify not playing</p>
-        <label class="audio-autostart"><input id="audio-autostart" type="checkbox" disabled /> Always start when this panel opens</label>
-        <div id="audio-consent" class="audio-consent" role="group" aria-labelledby="audio-consent-title" hidden>
-          <h3 id="audio-consent-title">Allow automatic Spotify capture?</h3>
-          <p>This panel will capture Spotify output now and on future opens or reloads, without asking again. No microphone, saved audio, or uploads. macOS audio permission is still required.</p>
-          <p>Uncheck Always start to revoke this choice and stop capture. Closing the panel also stops capture; future opens can start again if Always start remains enabled.</p>
-          <div class="audio-controls"><button id="audio-allow" type="button">Allow and remember</button><button id="audio-cancel" type="button">Cancel</button></div>
-        </div>
-        <p id="audio-preference-status" role="status"></p>
-      </section>
       <p id="order-announcement" class="visually-hidden" role="status"></p>
       <p id="error" role="alert" hidden></p>
       <p id="partial" class="notice" hidden>Partial roster: some workspaces or hosts were not returned.</p>
@@ -40,6 +27,23 @@
       <div id="species-results" role="listbox" aria-label="Pokémon species"></div>
       <p id="species-empty" role="status" hidden>No Pokémon found.</p>
     </div>
+    <section id="audio-card" class="audio-card" aria-labelledby="audio-title">
+        <div class="audio-heading"><h2 id="audio-title">Spotify</h2><span class="audio-local">Desktop</span></div>
+        <div id="audio-loader" class="audio-loader" aria-hidden="true"><span></span></div>
+        <div id="audio-idle" class="audio-idle" role="img" aria-label="Snorlax resting" hidden><span id="audio-idle-sprite" class="sprite"></span></div>
+        <div id="audio-bands" class="audio-bands" role="img" aria-label="Spotify output frequency spectrum" hidden></div>
+        <div class="audio-settings">
+          <div class="audio-controls"><button id="audio-enable" type="button" disabled>Allow Spotify visualizer</button><button id="audio-disable" type="button" hidden disabled>Disable visualizer</button></div>
+          <p id="audio-status" role="status">Spotify visualizer off</p>
+          <div role="group" id="audio-consent" class="audio-consent" aria-labelledby="audio-consent-title" hidden>
+            <h3 id="audio-consent-title">Allow automatic Spotify capture?</h3>
+            <p>This panel will capture Spotify output now and on future opens or reloads, without asking again. No microphone, saved audio, or uploads. macOS audio permission is still required.</p>
+            <p>Choose Disable visualizer in the panel controls to revoke this choice and stop capture. Closing the panel also stops capture; future opens can start again while permission remains enabled.</p>
+            <div class="audio-controls"><button id="audio-allow" type="button">Allow and remember</button><button id="audio-cancel" type="button">Cancel</button></div>
+          </div>
+          <p id="audio-preference-status" role="status"></p>
+        </div>
+    </section>
     <div id="workspace-tooltip" class="workspace-tooltip" role="tooltip" hidden><span id="workspace-tooltip-text"></span></div>
     <script type="module" src="./main.ts"></script>
   </body>
