@@ -2,6 +2,7 @@ import type { AudioStatus } from '../audio-protocol.ts';
 
 declare const fixture: {
   failAudioStart: boolean;
+  failStorage: boolean;
   audio: AudioStatus;
   calls: { name?: string; input?: { session: string } }[];
   post(event: string, payload: unknown): void;
@@ -21,33 +22,38 @@ async function until(condition: () => boolean): Promise<void> {
   throw new Error('Audio browser test did not settle within 150 frames.');
 }
 
-function automatic(): HTMLInputElement { return document.getElementById('audio-autostart') as HTMLInputElement; }
+function automatic(): HTMLButtonElement { return document.getElementById('audio-enable') as HTMLButtonElement; }
 async function start(): Promise<void> {
   await until((): boolean => !automatic().disabled);
-  check(!automatic().checked, 'Each new capture must request consent after revocation.');
+  check(!automatic().hidden, 'Each new capture must request consent after revocation.');
   automatic().click();
-  check(!document.getElementById('audio-consent')!.hidden, 'Checking must open consent.');
+  const dialog: HTMLDialogElement = document.getElementById('audio-consent') as HTMLDialogElement;
+  check(dialog.open && dialog.matches(':modal'), 'Allow Spotify visualizer must open modal consent.');
+  document.getElementById('audio-allow')!.scrollIntoView({ block: 'nearest' });
+  const allowBounds: DOMRect = document.getElementById('audio-allow')!.getBoundingClientRect();
+  check(allowBounds.top >= 0 && allowBounds.bottom <= innerHeight, 'Modal consent controls must remain reachable in short panels.');
   (document.getElementById('audio-allow') as HTMLButtonElement).click();
-  await until((): boolean => !automatic().disabled && automatic().checked);
+  await until((): boolean => !automatic().disabled && automatic().hidden);
 }
 async function stop(): Promise<void> {
-  const automatic: HTMLInputElement = document.getElementById('audio-autostart') as HTMLInputElement;
-  await until((): boolean => !automatic.disabled);
-  if (!automatic.checked) {
-    automatic.click();
-    (document.getElementById('audio-allow') as HTMLButtonElement).click();
-    await until((): boolean => !automatic.disabled && automatic.checked);
-  }
-  automatic.click();
-  await until((): boolean => !automatic.disabled);
+  const disable: HTMLButtonElement = document.getElementById('audio-disable') as HTMLButtonElement;
+  await until((): boolean => !disable.disabled);
+  // A failed owned shutdown remains retryable even after consent was revoked.
+  if (disable.hidden && fixture.audio.session === null) return;
+  disable.click();
+  await until((): boolean => !disable.disabled);
 }
 function bars(): HTMLElement[] { return Array.from(document.querySelectorAll<HTMLElement>('#audio-bands span')); }
 function label(): HTMLElement { return document.getElementById('audio-status')!; }
 function ready(): void {
-  fixture.post('audio.status', { state: 'listening', message: 'Spotify playing.', session: fixture.audio.session });
+  fixture.post('audio.status', { state: 'listening', message: 'Capturing Spotify output.', session: fixture.audio.session });
 }
 
 export async function run(): Promise<string[]> {
+  const enableControl: HTMLElement = document.getElementById('audio-enable')!;
+  const disableControl: HTMLElement = document.getElementById('audio-disable')!;
+  check(enableControl.parentElement === disableControl.parentElement && !enableControl.closest('.audio-card'), 'Enable and Disable must share controls outside the visualizer.');
+  check(document.getElementById('audio-card')!.hidden, 'Disabled visualizer must not occupy space.');
   check(typeof fixture !== 'undefined', 'Audio tests require the mock preview; never run against real capture.');
   const passed: string[] = [];
   await until((): boolean => !automatic().disabled);
@@ -55,6 +61,17 @@ export async function run(): Promise<string[]> {
   check(fixture.calls.every((call): boolean => call.name !== 'audio.start'), 'Panel load must not request capture.');
   check(bars().length === 24 && bars().every((bar: HTMLElement): boolean => bar.style.transform === 'scaleY(0)'), 'Stopped display must be flat.');
   passed.push('capture remains off on load, with 24 flat spectrum bars');
+  automatic().click();
+  const consent: HTMLDialogElement = document.getElementById('audio-consent') as HTMLDialogElement;
+  const allowConsent: HTMLButtonElement = document.getElementById('audio-allow') as HTMLButtonElement;
+  fixture.failStorage = true;
+  allowConsent.focus();
+  allowConsent.click();
+  await until((): boolean => !allowConsent.disabled && Boolean(document.getElementById('audio-consent-error')!.textContent));
+  check(consent.open && document.activeElement === allowConsent, 'Failed consent save must keep error and keyboard focus inside the popup.');
+  fixture.failStorage = false;
+  (document.getElementById('audio-cancel') as HTMLButtonElement).click();
+  check(!consent.open && document.activeElement === automatic(), 'Cancel must close popup and restore Enable focus.');
 
   const root: HTMLElement = document.documentElement;
   const card: HTMLElement = document.querySelector('.audio-card')!;
@@ -88,19 +105,54 @@ export async function run(): Promise<string[]> {
   await start();
   await until((): boolean => fixture.audio.state === 'starting');
   ready();
+  check(label().textContent === 'Capturing Spotify output.', 'Readiness must describe capture, not Spotify playback.');
   fixture.post('audio.frame', { bands: Array<number>(24).fill(0.6), level: 0.5 });
   check(bars().every((bar: HTMLElement): boolean => bar.style.transform === 'scaleY(0.6)'), 'Bars must reflect real input levels.');
+  check(document.getElementById('audio-idle')!.hidden, 'Audible input must hide resting Snorlax.');
   fixture.post('audio.frame', { bands: Array<number>(24).fill(0), level: 0 });
   check(bars().every((bar: HTMLElement): boolean => bar.style.transform === 'scaleY(0)'), 'Silence must be flat, not simulated.');
+  check(!document.getElementById('audio-idle')!.hidden && document.getElementById('audio-bands')!.hidden, 'Silence must replace the bars with resting Snorlax.');
+  const idleSprite: HTMLElement = document.getElementById('audio-idle-sprite')!;
+  const cycle: Animation = idleSprite.getAnimations()[0];
+  check(cycle !== undefined, 'Silence must start the Snorlax cycle.');
+  cycle.pause();
+  cycle.currentTime = 0;
+  await new Promise<number>(requestAnimationFrame);
+  check(getComputedStyle(idleSprite).backgroundImage.includes('0143/Sleep-Anim.png'), 'Cycle must begin with Sleep.');
+  cycle.currentTime = 1200;
+  await new Promise<number>(requestAnimationFrame);
+  check(getComputedStyle(idleSprite).backgroundImage.includes('0143/Sleep-Anim.png'), 'Snorlax must keep sleeping when the animation loops.');
+  cycle.play();
+  check(label().textContent === 'Capturing Spotify output.', 'Silent capture must not claim Spotify is playing.');
   (document.getElementById('motion') as HTMLButtonElement).click();
+  check(idleSprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'paused'), 'Motion pause must stop the resting animation.');
   fixture.post('audio.frame', { bands: Array<number>(24).fill(0.9), level: 0.8 });
   check(bars().every((bar: HTMLElement): boolean => bar.style.transform === 'scaleY(0)'), 'Motion pause must prevent bar updates.');
   check(label().textContent!.includes('display paused'), 'Paused display must disclose capture remains active.');
   (document.getElementById('motion') as HTMLButtonElement).click();
   await stop();
   await until((): boolean => !automatic().disabled);
-  check(fixture.audio.state === 'off', 'Unchecking Always start must request capture shutdown.');
+  check(fixture.audio.state === 'off', 'Disable visualizer must request capture shutdown.');
+  check(document.getElementById('audio-card')!.hidden && !automatic().hidden, 'Disabling must hide the card while keeping Enable outside it.');
   passed.push('verified consent starts capture, input levels, silence, motion pause, and revocation');
+
+  await start();
+  await until((): boolean => fixture.audio.state === 'starting');
+  ready();
+  const startsBeforeRefresh: number = fixture.calls.filter((call): boolean => call.name === 'audio.start').length;
+  const rostersBeforeRefresh: number = fixture.calls.filter((call): boolean => call.name === 'roster').length;
+  fixture.emit('workspace.changed', {});
+  await until((): boolean => fixture.calls.filter((call): boolean => call.name === 'roster').length > rostersBeforeRefresh);
+  check(fixture.calls.filter((call): boolean => call.name === 'audio.start').length === startsBeforeRefresh, 'Automatic roster refresh must not restart audio.');
+  const refresh: HTMLButtonElement = document.getElementById('refresh') as HTMLButtonElement;
+  await until((): boolean => !refresh.disabled);
+  refresh.click();
+  await until((): boolean => fixture.calls.filter((call): boolean => call.name === 'audio.start').length === startsBeforeRefresh + 1);
+  check(label().dataset.state === 'starting', 'Manual Refresh must restart permitted capture.');
+  check(!document.getElementById('audio-loader')!.hidden, 'Refreshed capture must show its startup loader.');
+  ready();
+  await stop();
+  passed.push('manual Refresh restarts capture while automatic roster refresh leaves it untouched');
 
   const request: typeof orca.plugin.request = orca.plugin.request;
   orca.plugin.request = async (name: string, input?: unknown): Promise<unknown> => {
@@ -173,6 +225,7 @@ export async function run(): Promise<string[]> {
   fixture.post('audio.frame', { bands: Array<number>(24).fill(1), level: 1 });
   const peerStartsBefore: number = fixture.calls.filter((call): boolean => call.name === 'audio.start').length;
   const peerStopsBefore: number = fixture.calls.filter((call): boolean => call.name === 'audio.stop').length;
+  await start();
   await stop();
   check(fixture.calls.filter((call): boolean => call.name === 'audio.start').length === peerStartsBefore, 'A second panel cannot take over another session.');
   check(fixture.calls.filter((call): boolean => call.name === 'audio.stop').length === peerStopsBefore, 'Revocation must not stop a peer session.');

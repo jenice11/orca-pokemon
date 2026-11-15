@@ -19,6 +19,18 @@
       <div id="empty" class="empty" hidden><div class="pokeball" aria-hidden="true"></div><h2>No companions yet</h2><p>Start an agent in an Orca terminal.<br />Your Pokémon will appear here.</p></div>
       <footer>
         <p>Click a Pokémon to focus its agent.<br />Click its Poké Ball to search species.</p>
+        <div class="audio-settings">
+          <div class="audio-controls"><button id="audio-enable" type="button" disabled>Allow Spotify visualizer</button><button id="audio-disable" type="button" hidden disabled>Disable visualizer</button></div>
+          <p id="audio-status" role="status">Spotify visualizer off</p>
+          <dialog id="audio-consent" class="audio-consent" aria-labelledby="audio-consent-title" hidden>
+            <h3 id="audio-consent-title">Allow automatic Spotify capture?</h3>
+            <p>This panel will capture Spotify output now and on future opens or reloads, without asking again. No microphone, saved audio, or uploads. macOS audio permission is still required.</p>
+            <p>Choose Disable visualizer in the panel controls to revoke this choice and stop capture. Closing the panel also stops capture; future opens can start again while permission remains enabled.</p>
+            <p id="audio-consent-error" role="alert"></p>
+            <div class="audio-controls"><button id="audio-allow" type="button">Allow and remember</button><button id="audio-cancel" type="button">Cancel</button></div>
+          </dialog>
+          <p id="audio-preference-status" role="status"></p>
+        </div>
         <details><summary>About &amp; credits</summary><p>17 bundled Pokémon. Live terminal agents on this Orca host and its reachable SSH hosts; not structured chats or paired servers. Refresh after an agent exits.</p><p>Inspired by mathieucroset/herdr-pokemon-agents (MIT). Sprite art: PMDCollab / SpriteCollab contributors, CC BY-NC 4.0. Full artist credits and source links: ATTRIBUTION.md in this plugin.</p><p>Noncommercial fan project. Pokémon © Nintendo, Creatures, GAME FREAK. Not affiliated or endorsed.</p></details>
       </footer>
     </main>
@@ -27,22 +39,11 @@
       <div id="species-results" role="listbox" aria-label="Pokémon species"></div>
       <p id="species-empty" role="status" hidden>No Pokémon found.</p>
     </div>
-    <section id="audio-card" class="audio-card" aria-labelledby="audio-title">
+    <section id="audio-card" class="audio-card" aria-labelledby="audio-title" hidden>
         <div class="audio-heading"><h2 id="audio-title">Spotify</h2><span class="audio-local">Desktop</span></div>
         <div id="audio-loader" class="audio-loader" aria-hidden="true"><span></span></div>
         <div id="audio-idle" class="audio-idle" role="img" aria-label="Snorlax resting" hidden><span id="audio-idle-sprite" class="sprite"></span></div>
         <div id="audio-bands" class="audio-bands" role="img" aria-label="Spotify output frequency spectrum" hidden></div>
-        <div class="audio-settings">
-          <div class="audio-controls"><button id="audio-enable" type="button" disabled>Allow Spotify visualizer</button><button id="audio-disable" type="button" hidden disabled>Disable visualizer</button></div>
-          <p id="audio-status" role="status">Spotify visualizer off</p>
-          <div role="group" id="audio-consent" class="audio-consent" aria-labelledby="audio-consent-title" hidden>
-            <h3 id="audio-consent-title">Allow automatic Spotify capture?</h3>
-            <p>This panel will capture Spotify output now and on future opens or reloads, without asking again. No microphone, saved audio, or uploads. macOS audio permission is still required.</p>
-            <p>Choose Disable visualizer in the panel controls to revoke this choice and stop capture. Closing the panel also stops capture; future opens can start again while permission remains enabled.</p>
-            <div class="audio-controls"><button id="audio-allow" type="button">Allow and remember</button><button id="audio-cancel" type="button">Cancel</button></div>
-          </div>
-          <p id="audio-preference-status" role="status"></p>
-        </div>
     </section>
     <div id="workspace-tooltip" class="workspace-tooltip" role="tooltip" hidden><span id="workspace-tooltip-text"></span></div>
     <script type="module" src="./main.ts"></script>

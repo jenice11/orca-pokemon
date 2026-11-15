@@ -99,6 +99,15 @@ export async function run(): Promise<string[]> {
   agentIcon.dispatchEvent(new MouseEvent('mouseleave', { relatedTarget: workspaceTooltip }));
   check(workspaceTooltip.hidden, 'Tooltip must close when leaving its trigger, like Orca\'s non-hoverable tooltip.');
   agentIcon.focus();
+  const dock: HTMLElement = document.querySelector('.audio-card')!;
+  const previousHeight: string = dock.style.height;
+  if (!dock.hidden) {
+    dock.style.height = `${dock.offsetHeight + 24}px`;
+    await new Promise<number>(requestAnimationFrame);
+    await new Promise<number>(requestAnimationFrame);
+    check(workspaceTooltip.hidden, 'Changing Spotify height must dismiss stale tooltip geometry before it can overlap the dock.');
+  }
+  dock.style.height = previousHeight;
   fixture.agents[0].workspace = originalWorkspace;
   fixture.agents[0].agent = originalAgent;
   await refresh();
@@ -285,6 +294,28 @@ export async function run(): Promise<string[]> {
   check(!removed.isConnected && removed.getAnimations().length === 0, 'Removed sprite must not restart after late storage read.');
   orca.host.call = call;
   passed.push('late storage response cannot revive removed sprite animations');
+
+  const originalAgents: AgentRow[] = fixture.agents;
+  fixture.agents = Array.from({ length: 20 }, (_: unknown, index: number): AgentRow => ({ ...originalAgents[0], id: `scroll-agent-${index}`, paneKey: `tab:scroll-${index}` }));
+  await refresh();
+  const scroller: HTMLElement = document.querySelector('main')!;
+  const spotify: HTMLElement = document.querySelector('.audio-card')!;
+  const spotifyTop: number = spotify.getBoundingClientRect().top;
+  check(scroller.scrollHeight > scroller.clientHeight, 'Many agents must scroll inside the roster area.');
+  scroller.scrollTop = scroller.scrollHeight;
+  await new Promise<number>(requestAnimationFrame);
+  check(scroller.scrollTop > 0, 'Roster must scroll independently.');
+  check(Math.abs(spotify.getBoundingClientRect().top - spotifyTop) <= 1, 'Spotify must stay pinned while agents scroll.');
+  if (spotify.hidden) {
+    check(Math.abs(scroller.getBoundingClientRect().bottom - innerHeight) <= 1, 'Disabled Spotify must release its space to the roster.');
+  } else {
+    check(Math.abs(spotify.getBoundingClientRect().bottom - (innerHeight - 10)) <= 1, 'Spotify must remain at the panel bottom.');
+    check(scroller.getBoundingClientRect().bottom <= spotifyTop, 'Pinned Spotify must not cover the agent area.');
+  }
+  fixture.agents = originalAgents;
+  await refresh();
+  scroller.scrollTop = 0;
+  passed.push('many-agent scrolling keeps Spotify pinned without overlap');
 
   fixture.agents = [];
   await refresh();

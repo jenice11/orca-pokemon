@@ -10,7 +10,7 @@
 
 ## Sprite artwork and metadata
 
-[PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab) supplies the sprite sheets, animation metadata, and contributor records. The selected animations are credited upstream to **CHUNSOFT**. The bundle is pinned to commit [`13eb5a7733c5f5ba66031a2c5fb7bc67371d7310`](https://github.com/PMDCollab/SpriteCollab/commit/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310).
+[PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab) supplies the sprite sheets, animation metadata, and contributor records. Per-animation artist credits appear in [ATTRIBUTION.md](ATTRIBUTION.md), including **CHUNSOFT** for original game artwork. The bundle is pinned to commit [`13eb5a7733c5f5ba66031a2c5fb7bc67371d7310`](https://github.com/PMDCollab/SpriteCollab/commit/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310).
 
 Detailed credits and notices are preserved in:
 
@@ -21,6 +21,10 @@ Detailed credits and notices are preserved in:
 - [assets/provenance.json](assets/provenance.json): pinned source URLs and SHA256 hashes.
 
 The PNG sheets are bundled unchanged. Playback metadata converts frame durations and selects facing rows; see [ATTRIBUTION.md](ATTRIBUTION.md) for details.
+
+## Agent brand icons
+
+Claude, Codex, and OpenCode marks are third-party representations from [LobeHub Icons](https://github.com/lobehub/lobe-icons), copyright (c) 2023 LobeHub, distributed under the MIT license. The pinned source revision and original filenames are recorded in [assets/agents/SOURCES.md](assets/agents/SOURCES.md); the complete license is bundled in [assets/agents/LICENSE](assets/agents/LICENSE). SVG files are bundled unchanged and served locally. The icon license does not grant trademark rights or imply endorsement by the represented products. It is separate from the Pokémon artwork license.
 
 ## Rights and redistribution
 

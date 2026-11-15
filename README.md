@@ -1,15 +1,15 @@
 # Pokémon Agents for Orca
 
-A Pokémon companion panel for [Orca](https://www.onorca.dev/). Each live terminal agent gets a sprite that reflects its status. Click a Pokémon to focus its agent, or choose a different species from its dropdown.
+A Pokémon companion panel for [Orca](https://www.onorca.dev/). Each live terminal agent gets a sprite that reflects its status. Click a Pokémon to focus its agent, or search for a different species from its Poké Ball.
 
 ## Features
 
 - **Live status animations:** walking while working, an attention hop when blocked, idle breathing while waiting, and sleeping when done.
 - **Click-to-focus:** switches to the exact agent terminal using a freshly resolved Orca terminal handle.
-- **Saved species choices:** 12 Pokémon, with choices stored per workspace and pane identity.
-- **Offline sprites:** 36 bundled animation sheets; no runtime downloads, telemetry, or external requests.
+- **Saved species choices:** 17 Pokémon, with choices stored per workspace and pane identity.
+- **Offline sprites:** 51 bundled animation sheets; no runtime downloads, telemetry, or external requests.
 - **Accessible controls:** keyboard navigation, status labels, a motion toggle, and support for reduced-motion preferences.
-- **Spotify visualizer:** an optional spectrum display driven by Spotify desktop playback on supported Macs, with manual or remembered automatic start.
+- **Spotify visualizer:** an optional spectrum display driven by Spotify desktop playback on supported Macs, with remembered explicit permission.
 
 “Done” reflects Orca's status; it does not prove the agent's task succeeded.
 
@@ -58,24 +58,37 @@ orca plugin dev unload . --json
 
 1. Start an agent in an Orca terminal and open **Pokémon Agents** in the right sidebar.
 2. Click its Pokémon, or use Tab and Enter, to focus the terminal.
-3. Choose a species from the dropdown. Right-clicking the Pokémon focuses that dropdown.
-4. Use **Pause motion** to stop animations, or **Refresh** to reconcile the roster.
+3. Click the Poké Ball in the sprite area's lower-left corner to search Pokémon names (case-insensitive). The current species is marked. Use Arrow Up/Down and Enter to choose, or Escape to close. Choosing saves immediately, updates the sprite, closes the picker, and returns focus to the Poké Ball. Right-clicking the Pokémon also opens search. Failed saves keep the previous species, show an error, and leave search usable. Clicking outside dismisses without taking focus.
+4. Use **Pause** to stop animations, or **Refresh** to reconcile the roster and refresh permitted Spotify capture.
 
-Available species: Bulbasaur, Charmander, Squirtle, Pikachu, Jigglypuff, Meowth, Psyduck, Gengar, Eevee, Snorlax, Dragonite, and Mew.
+Available species: Bulbasaur, Charmander, Squirtle, Pikachu, Jigglypuff, Meowth, Psyduck, Gengar, Cubone, Eevee, Snorlax, Dragonite, Mew, Suicune, Piplup, Sylveon, and Yamper.
+
+## Arrange agents
+
+- Agents are grouped by project, with a collapsible heading and agent count. A small Claude, Codex, or OpenCode icon sits at the bottom-right of each sprite area instead of an agent-type text row. Hover, focus, or click the icon for the agent name only; clicking the Pokémon still focuses its terminal. Other agent types use a neutral terminal mark.
+- **Manual** is the default. Drag a card's header grip within its project, or focus the grip and use **Arrow Up** or **Arrow Down**. The Pokémon still focuses its terminal.
+- Drag a project heading's grip to rearrange whole groups, or focus the grip and use **Arrow Up** or **Arrow Down**. Project order is saved independently of agent order. Collapsing a group is preserved during refreshes, not across panel reloads.
+- Manual order is saved across refreshes and panel reloads. New agents append at the end; temporarily absent agents retain their place when they return.
+- **Needs attention first** puts permission/prompt requests first within each project. **Name** sorts agent titles within each project. These views do not replace your manual order or move projects.
+- Status updates do not shuffle cards. Select a sort or click **Refresh** to apply it again. Choose **Manual** before rearranging cards.
+
+Saved order contains hashed agent and project identities, not agent names or workspace paths. Projects use repository identity and execution host, so matching display names do not merge unrelated repositories. Older rosters without repository identity fall back to separate workspace groups. Existing species choices and manual agent order are retained. Save failures keep your local arrangement and show an error; move a card or project again to retry. Concurrent panels use last-writer-wins storage.
 
 ## Spotify visualizer
 
 1. Play a song in Spotify desktop on this Mac. Spotify Connect playback on another device cannot be captured here.
-2. Check **Always start when this panel opens**, read the confirmation, and choose **Allow and remember**. If macOS asks, approve system-audio recording for the helper or its responsible host in **System Settings → Privacy & Security → Screen & System Audio Recording**.
+2. Choose **Allow Spotify visualizer**, read the confirmation popup, and choose **Allow and remember**. Cancel or Escape closes it without granting permission. If macOS asks, approve system-audio recording for the helper or its responsible host in **System Settings → Privacy & Security → Screen & System Audio Recording**.
 3. Hide or close the panel to end capture. Automatic start is off by default.
 
-The checkbox is off by default. Checking it only opens the confirmation; Cancel grants nothing. After Allow saves and verifies the choice, Spotify capture starts in the current visible idle panel and on future panel opens or reloads without asking again. Uncheck it to revoke automatic start and stop current capture. Closing the panel stops capture without changing the remembered choice. This does not bypass macOS audio permission. There are no manual Start or Stop buttons.
+Permission is off by default. Enable and Disable share the footer control area outside the visualizer. The Spotify card disappears when disabled, freeing space for agents; consent and errors remain reachable. **Allow Spotify visualizer** only opens the confirmation; Cancel grants nothing. After Allow saves and verifies the choice, Spotify capture starts in the current visible idle panel and on future panel opens or reloads without asking again. Choose **Disable visualizer** to revoke permission and stop this panel's capture, never a peer panel's capture. The explicit consent control returns after revocation. Closing the panel stops capture without changing the remembered choice. This does not bypass macOS audio permission. There are no manual Start or Stop buttons.
 
 Quickly switching away and back may show **Waiting for previous capture to stop…** for about 5 seconds. Automatic start waits for that session to end instead of taking it over.
 
 The helper uses an audio-only Core Audio tap filtered to Spotify (`com.spotify.client`), not the microphone, screen, or other apps' audio. Samples remain in memory; only frequency-band levels reach the panel. No audio is recorded, saved, or uploaded. The plugin never falls back to microphone or all-system capture.
 
-Silence produces a flat display. If no bars appear, confirm Spotify is playing locally and check the permission above. Protected playback, device changes, or Spotify's process attribution can prevent capture. Pausing motion pauses the display, not capture. Hiding or closing the panel requests a stop, with a 5-second lease timeout if the connection is lost. Reopening starts capture again only if saved Always start consent is verified. Capture waits for a previous session to stop and never takes it over. A failed start does not retry in a loop; reopen the panel to try again.
+Silence shows sleeping Snorlax instead of the bars; audio input restores the visualizer. A loader appears until the first captured frame arrives. Silence means all captured frequency bands are below the helper's display floor, not proof that Spotify is stopped. If no bars appear, confirm Spotify is playing locally and check the permission above. Protected playback, device changes, or Spotify's process attribution can prevent capture. Pausing motion pauses the display, not capture. Hiding or closing the panel requests a stop, with a 5-second lease timeout if the connection is lost. Reopening starts capture again only if saved permission is verified as literal `true`. Capture waits for a previous session to stop and never takes it over. A failed start does not retry in a loop; reopen the panel to try again.
+
+Click **Refresh** to update the agent list and restart Spotify capture when saved permission is enabled. Capture waits for its previous helper to close before restarting. Automatic roster updates do not restart capture, and Refresh never takes over another panel's session or grants permission.
 
 ## Permissions and privacy
 
@@ -92,7 +105,7 @@ Orca's plugin API cannot list agents across all workspaces or focus an individua
 
 CLI responses include conversation metadata and terminal previews. The worker discards these except the displayed agent title, kind, state, workspace label, and routing identity. Raw responses and previews are not stored or logged. Persistent storage contains species numbers under hashed identity keys and your automatic-start choice.
 
-The plugin does not submit terminal input, launch agents, access the microphone, or send data to an external service. Optional Spotify capture requires an explicit Start or your remembered automatic-start consent, plus macOS permission. These are intended behaviors, not sandbox guarantees: trusted worker code has broader machine authority.
+The plugin does not submit terminal input, launch agents, access the microphone, or send data to an external service. Optional Spotify capture requires your remembered explicit consent, plus separate macOS permission. These are intended behaviors, not sandbox guarantees: trusted worker code has broader machine authority.
 
 ## Limitations
 
@@ -105,7 +118,7 @@ The plugin does not submit terminal input, launch agents, access the microphone,
 ## Credits and asset rights
 
 - **Original concept:** [mathieucroset/herdr-pokemon-agents](https://github.com/mathieucroset/herdr-pokemon-agents), an MIT-licensed Herdr mod.
-- **Sprite source and animation metadata:** [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab), with original artwork credited to **CHUNSOFT** in the bundled contributor records.
+- **Sprite source and animation metadata:** [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab), with per-animation artist credits in [ATTRIBUTION.md](ATTRIBUTION.md), including **CHUNSOFT** for original game artwork.
 - **Pokémon characters and marks:** Nintendo, Creatures Inc., and GAME FREAK inc.
 
 See [CREDITS.md](CREDITS.md) for project acknowledgments and [ATTRIBUTION.md](ATTRIBUTION.md) for per-animation credits, pinned sources, license terms, and modifications. [Asset provenance](assets/provenance.json) records download URLs and SHA256 hashes.

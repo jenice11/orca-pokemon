@@ -44,7 +44,8 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   let idleAnimation: Animation | undefined;
   const enable: HTMLButtonElement = document.getElementById('audio-enable') as HTMLButtonElement;
   const disable: HTMLButtonElement = document.getElementById('audio-disable') as HTMLButtonElement;
-  const consent: HTMLElement = document.getElementById('audio-consent')!;
+  const consent: HTMLDialogElement = document.getElementById('audio-consent') as HTMLDialogElement;
+  const consentError: HTMLElement = document.getElementById('audio-consent-error')!;
   const allow: HTMLButtonElement = document.getElementById('audio-allow') as HTMLButtonElement;
   const cancel: HTMLButtonElement = document.getElementById('audio-cancel') as HTMLButtonElement;
   const preferenceNote: HTMLElement = document.getElementById('audio-preference-status')!;
@@ -71,6 +72,7 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   let audible: boolean = false;
 
   function paintPermission(): void {
+    card.hidden = !savedAutoStart || !preferenceVerified;
     enable.hidden = savedAutoStart && preferenceVerified;
     disable.hidden = !savedAutoStart && status.session !== session;
     enable.disabled = disable.disabled = allow.disabled = cancel.disabled = preferenceSaving || !initialized;
@@ -230,12 +232,14 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
       await host.call('storage.set', { key: autoStartKey, value: enabled });
       if (disposed) return;
       automaticStartPending = enabled && !document.hidden && !pageExited;
+      consent.close();
       consent.hidden = true;
       preferenceNote.textContent = '';
     } catch {
       if (disposed) return;
       preferenceNote.textContent = enabled ? 'Could not save permission. Automatic start was not enabled.' :
         'Could not save this change. Future panels may still start automatically; choose Disable visualizer again to retry.';
+      consentError.textContent = preferenceNote.textContent;
     } finally {
       if (!disposed) {
         preferenceSaving = false;
@@ -263,7 +267,7 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     }).finally((): void => {
       if (disposed || version !== preferenceVersion) return;
       if (restoreFocus && (document.activeElement === document.body || document.activeElement === allow || document.activeElement === disable)) {
-        (enable.hidden ? disable : enable).focus({ preventScroll: true });
+        (consent.open ? allow : enable.hidden ? disable : enable).focus({ preventScroll: true });
       }
     });
   }
@@ -273,11 +277,17 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     startupCancelled = true;
     automaticStartPending = false;
     consent.hidden = false;
+    consentError.textContent = '';
+    if (!consent.open) consent.showModal();
     allow.focus();
   }
   function revokePermission(): void { void saveAutomaticStart(false); }
   function allowAutomaticStart(): void { void saveAutomaticStart(true); }
-  function cancelAutomaticStart(): void { consent.hidden = true; enable.focus(); }
+  function cancelAutomaticStart(): void { consent.close(); consent.hidden = true; enable.focus(); }
+  function cancelConsent(event: Event): void {
+    event.preventDefault();
+    if (!preferenceSaving) cancelAutomaticStart();
+  }
 
   const statuses: { dispose(): void } = bridge.on('audio.status', (value: unknown): void => {
     try { apply(value); }
@@ -303,6 +313,7 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   disable.addEventListener('click', revokePermission);
   allow.addEventListener('click', allowAutomaticStart);
   cancel.addEventListener('click', cancelAutomaticStart);
+  consent.addEventListener('cancel', cancelConsent);
   document.addEventListener('visibilitychange', hide);
   window.addEventListener('pagehide', pageExit);
   paint();
@@ -358,6 +369,8 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
       disable.removeEventListener('click', revokePermission);
       allow.removeEventListener('click', allowAutomaticStart);
       cancel.removeEventListener('click', cancelAutomaticStart);
+      consent.removeEventListener('cancel', cancelConsent);
+      consent.close();
       document.removeEventListener('visibilitychange', hide);
       window.removeEventListener('pagehide', pageExit);
     }

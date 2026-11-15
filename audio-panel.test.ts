@@ -116,6 +116,7 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
     assert.equal(elements.get('audio-idle')!.hidden, true, 'Loading must not show an idle sprite.');
     await settle();
     if (initialPermission instanceof Error) {
+      assert.equal(elements.get('audio-card')!.hidden, true, 'Unverified permission must keep the visualizer hidden.');
       assert.equal(starts, 0);
       visualizer.refresh();
       await settle();
@@ -128,10 +129,12 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
     assert.equal(elements.has('audio-start'), false, 'Capture eligibility must not depend on a Start button.');
     assert.equal(elements.has('audio-autostart'), false, 'Saved consent must not depend on a checkbox.');
     if (initialPermission === true) {
+      assert.equal(elements.get('audio-card')!.hidden, false, 'Remembered enable must show the visualizer.');
       assert.equal(elements.get('audio-enable')!.hidden, true, 'Saved permission must hide the entry control.');
       assert.equal(elements.get('audio-disable')!.hidden, false, 'Saved permission must expose revocation.');
     }
     if (initialPermission !== true) {
+      assert.equal(elements.get('audio-card')!.hidden, true, 'Disabled visualizer must disappear.');
       const automatic: Element = elements.get('audio-enable')!;
       assert.equal(automatic.hidden, false, 'Only literal true grants saved consent.');
       assert.equal(starts, 0);
@@ -141,10 +144,13 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
       automatic.dispatchEvent(new Event('click'));
       assert.equal(automatic.hidden, false, 'Opening consent does not grant permission.');
       assert.equal(elements.get('audio-consent')!.hidden, false);
+      assert.equal(elements.get('audio-consent')!.open, true, 'Consent must open as a popup.');
+      assert.equal(elements.get('audio-card')!.hidden, true, 'Opening consent must not reveal the visualizer.');
       assert.equal(writes, 0);
-      elements.get('audio-cancel')!.dispatchEvent(new Event('click'));
+      elements.get('audio-consent')!.dispatchEvent(new Event('cancel', { cancelable: true }));
       await settle();
       assert.equal(starts, 0, 'Cancel must not capture.');
+      assert.equal(elements.get('audio-consent')!.open, false, 'Escape must close consent without granting permission.');
       assert.equal(writes, 0, 'Cancel must not persist consent.');
       automatic.dispatchEvent(new Event('click'));
       let verifySavedPermission: ((value: unknown) => void) | undefined;
@@ -152,11 +158,13 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
       elements.get('audio-allow')!.dispatchEvent(new Event('click'));
       await settle();
       assert.equal(starts, 0, 'Allow must wait for saved consent verification.');
+      assert.equal(elements.get('audio-card')!.hidden, true, 'Pending verification must keep the card hidden.');
       assert.equal(writes, 1);
       verifySavedPermission!({ value: permission });
       readPermission = undefined;
       await settle();
       assert.equal(automatic.hidden, true);
+      assert.equal(elements.get('audio-card')!.hidden, false, 'Verified consent must reveal the visualizer.');
     }
     if (previousCapture) {
       assert.equal(starts, 0, 'Reopening must not take over a previous capture.');
