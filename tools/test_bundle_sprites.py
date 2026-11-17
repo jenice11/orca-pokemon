@@ -49,33 +49,90 @@ vm.runInContext(ts.transpileModule(renderer, { compilerOptions: { target: ts.Scr
 const rendered = {};
 for (const species of pokemon) {
   rendered[species.name] = {};
-  for (const [pose, state] of [['walk', 'working'], ['idle', 'idle'], ['sleep', 'done']]) {
-    const companion = { row: { state }, species, sprite: { style: {} } };
+  for (const [pose, state] of [['walk', 'working'], ['idle', 'idle'], ['sleep', 'done'], ...(species.animations.shock ? [['shock', 'working'], ['tumble', 'working'], ['tumbleback', 'working']] : [])]) {
+    const selected = pose === 'tumbleback' ? { ...species, animations: { ...species.animations, tumble: undefined } } : species;
+    const companion = { row: { state }, species: selected, workAnimation: pose, sprite: { style: {}, dataset: {} } };
     context.animateSprite(companion);
+    if (!companion.sprite.style.backgroundImage.includes(species.animations[pose].path)) throw new Error(`Wrong animation: ${species.name} ${pose}`);
     rendered[species.name][pose] = companion.sprite.style;
   }
 }
 console.log(JSON.stringify(rendered));
+context.paused = false;
+for (const species of pokemon) {
+  let captured;
+  const companion = { row: { state: 'working' }, species, sprite: {
+    style: {}, dataset: {}, animate(frames, options) { captured = { frames, options }; return { cancel() {} }; }
+  } };
+  context.animateSprite(companion);
+  const sheet = species.animations.shock ?? species.animations.walk;
+  const turning = Boolean(species.animations.shock);
+  const cycle = sheet.durations.reduce((sum, duration) => sum + duration, 0);
+  if (Math.abs(captured.options.duration - cycle * (turning ? 32 : 1)) > 0.001) throw new Error('Wrong animation speed');
+  if (companion.sprite.dataset.turning !== String(turning)) throw new Error('Wrong patrol mode');
+  if (turning) {
+    const height = sheet.height * (sheet.scale ?? species.scale);
+    for (let segment = 0; segment < 8; segment++) {
+      const frame = captured.frames[segment * sheet.columns];
+      if (frame.backgroundPosition !== `0px ${-segment * height}px`) throw new Error('Wrong turn direction');
+    }
+  }
+}
+const pikachu = pokemon.find(species => species.id === 25);
+let tumble;
+context.animateSprite({ row: { state: 'working' }, species: pikachu, workAnimation: 'tumbleback', sprite: {
+  style: {}, dataset: {}, animate(frames, options) { tumble = { frames, options }; return { cancel() {} }; }
+} });
+if (tumble.options.duration !== 3600 || tumble.frames.length !== 19) throw new Error('Wrong tumble timing');
+for (let index = 0; index < 18; index++) {
+  const sheet = index < 8 ? pikachu.animations.tumble : pikachu.animations.tumbleback;
+  const height = sheet.height * (sheet.scale ?? pikachu.scale);
+  const width = sheet.width * (sheet.scale ?? pikachu.scale);
+  const frame = tumble.frames[index];
+  const row = sheet.row;
+  if (frame.backgroundImage !== `url("${sheet.path}")` || frame.width !== `${width}px` || frame.height !== `${height}px`) throw new Error('Wrong tumble sheet geometry');
+  if (frame.backgroundPosition !== `${-(index < 8 ? index : index - 8) * width}px ${-row * height}px`) throw new Error('Wrong tumble facing');
+  if (!frame.transform.endsWith(`rotate(${index < 8 ? 90 : -90}deg)`)) throw new Error('Wrong tumble rotation');
+  const groundOffset = sheet.rotatedBottomOffsets[index < 8 ? 0 : 1] * (sheet.scale ?? pikachu.scale);
+  if (!frame.transform.includes(`px, ${groundOffset}px)`)) throw new Error('Wrong rotated grounding');
+}
+if (!tumble.frames[0].transform.startsWith('translate(-35px,') ||
+    !tumble.frames[7].transform.startsWith('translate(35px,') ||
+    !tumble.frames[8].transform.startsWith('translate(35px,') ||
+    !tumble.frames[17].transform.startsWith('translate(-35px,')) throw new Error('Wrong tumble travel');
 """], cwd=bundle.ROOT, check=True, capture_output=True, text=True)
         rendered = json.loads(result.stdout)
         text = (bundle.ROOT / "panel/sprites.ts").read_text()
         pokemon = json.loads(text.split("export const POKEMON: Pokemon[] = ")[1].rstrip(";\n"))
+        self.assertTrue(
+            {(172, "Pichu"), (175, "Togepi"), (722, "Rowlet"), (778, "Mimikyu"), (813, "Scorbunny")}
+            <= {(species["id"], species["name"]) for species in pokemon}
+        )
         visible = {}
+        self.assertEqual([species["id"] for species in pokemon if "shock" in species["animations"]], [25])
+        self.assertEqual(next(species for species in pokemon if species["id"] == 25)["animations"]["shock"]["row"], 0)
         for species in pokemon:
             scales = []
             visible[species["name"]] = {}
             for name, animation in species["animations"].items():
                 style = rendered[species["name"]][name]
                 scale = float(style["width"][:-2]) / animation["width"]
-                translation = float(style["transform"].removeprefix("translateY(").removesuffix("px)"))
-                scales.append(scale)
+                translation = float(style["transform"].removeprefix("translateY(").split("px)")[0])
+                if name in ("tumble", "tumbleback"):
+                    self.assertAlmostEqual(translation, animation["rotatedBottomOffsets"][0] * scale)
+                    translation = animation["bottomOffset"] * scale
+                if name not in ("shock", "tumble", "tumbleback"):
+                    scales.append(scale)
                 data = (bundle.ROOT / "panel" / animation["path"]).read_bytes()
-                width, _ = bundle.png_size(data)
+                width, sheet_height = bundle.png_size(data)
                 alpha = bundle.png_alpha(data)
                 points = [(x % animation["width"], y % animation["height"])
-                          for y in range(animation["row"] * animation["height"], (animation["row"] + 1) * animation["height"])
+                          for y in (range(sheet_height) if name in ("shock", "tumble", "tumbleback") else range(animation["row"] * animation["height"], (animation["row"] + 1) * animation["height"]))
                           for x in range(width) if alpha[y * width + x]]
                 xs, ys = zip(*points)
+                if name in ("tumble", "tumbleback"):
+                    self.assertAlmostEqual(animation["height"] / 2 + animation["width"] / 2 - (max(xs) + 1), animation["rotatedBottomOffsets"][0])
+                    self.assertAlmostEqual(animation["height"] / 2 - animation["width"] / 2 + min(xs), animation["rotatedBottomOffsets"][1])
                 visible[species["name"]][name] = ((max(xs) - min(xs) + 1) * scale, (max(ys) - min(ys) + 1) * scale)
                 with self.subTest(species=species["name"], pose=name):
                     self.assertAlmostEqual(float(style["height"][:-2]) / animation["height"], scale)
@@ -94,7 +151,8 @@ console.log(JSON.stringify(rendered));
                 self.assertLessEqual(awake_size, 50 + 1e-8)
         pikachu = visible["Pikachu"]["sleep"]
         sylveon = visible["Sylveon"]["sleep"]
-        self.assertGreater(pikachu[0] / sylveon[0], 0.8, (pikachu, sylveon))
+        # Extra working frames constrain Pikachu's shared scale without resizing between poses.
+        self.assertGreater(pikachu[0] / sylveon[0], 0.75, (pikachu, sylveon))
         self.assertGreater(pikachu[0], 35)
         self.assertLess(visible["Snorlax"]["sleep"][1], visible["Snorlax"]["walk"][1])
 
@@ -135,9 +193,11 @@ console.log(JSON.stringify(rendered));
             for name, animation in species["animations"].items():
                 with self.subTest(species=species["name"], animation=name):
                     expected = 0
-                    if name in ("sleep", "walk"):
+                    if name in ("sleep", "walk", "shock", "tumble", "tumbleback"):
                         data = (bundle.ROOT / "panel" / animation["path"]).read_bytes()
                         expected = bundle.bottom_offset(data, animation["width"], animation["height"], animation["columns"], animation["row"])
+                        if name in ("shock", "tumble", "tumbleback"):
+                            expected = min(bundle.bottom_offset(data, animation["width"], animation["height"], animation["columns"], row) for row in range(bundle.png_size(data)[1] // animation["height"]))
                     else:
                         data = (bundle.ROOT / "panel" / animation["path"]).read_bytes()
                         walk = species["animations"]["walk"]

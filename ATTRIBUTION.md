@@ -18,6 +18,12 @@ Run `python3 tools/bundle-sprites.py` to download and regenerate; run `python3 t
 
 ## Per-sprite credits
 
+Pikachu additionally bundles Shock, starting at screen-facing row 0. Its bounds and bottom padding cover all eight directions for turning. Shock alone may use a smaller scale to fit every direction without shrinking Pikachu's other poses.
+
+Pikachu also bundles TumbleBack, rotating its single source direction 90 degrees for rightward travel and -90 degrees for the return trip. It has an independently constrained scale.
+
+The Tumble work option uses Tumble for rightward travel and TumbleBack for leftward travel, with separate rotated floor offsets for each sheet.
+
 | Species | Bundled animation | Named contributors | Resolved source animation |
 | --- | --- | --- | --- |
 | 1 Bulbasaur | Walk | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0001) |
@@ -32,6 +38,9 @@ Run `python3 tools/bundle-sprites.py` to download and regenerate; run `python3 t
 | 25 Pikachu | Walk | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0025) |
 | 25 Pikachu | Idle | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0025) |
 | 25 Pikachu | Sleep | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0025) |
+| 25 Pikachu | Shock | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Shock](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0025) |
+| 25 Pikachu | Tumble | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Tumble](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0025) |
+| 25 Pikachu | TumbleBack | [CHUNSOFT](https://www.spike-chunsoft.com/) | [TumbleBack](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0025) |
 | 39 Jigglypuff | Walk | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0039) |
 | 39 Jigglypuff | Idle | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0039) |
 | 39 Jigglypuff | Sleep | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0039) |
@@ -59,6 +68,12 @@ Run `python3 tools/bundle-sprites.py` to download and regenerate; run `python3 t
 | 151 Mew | Walk | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0151) |
 | 151 Mew | Idle | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0151) |
 | 151 Mew | Sleep | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0151) |
+| 172 Pichu | Walk | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0172) |
+| 172 Pichu | Idle | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0172) |
+| 172 Pichu | Sleep | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0172) |
+| 175 Togepi | Walk | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0175) |
+| 175 Togepi | Idle | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0175) |
+| 175 Togepi | Sleep | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0175) |
 | 245 Suicune | Walk | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0245) |
 | 245 Suicune | Idle | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0245) |
 | 245 Suicune | Sleep | [CHUNSOFT](https://www.spike-chunsoft.com/) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0245) |
@@ -68,6 +83,15 @@ Run `python3 tools/bundle-sprites.py` to download and regenerate; run `python3 t
 | 700 Sylveon | Walk | baronessfaron | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0700) |
 | 700 Sylveon | Idle | baronessfaron | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0700) |
 | 700 Sylveon | Sleep | baronessfaron | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0700) |
+| 722 Rowlet | Walk | Reimu\_needs\_$$$, [Emmuffin](https://twitter.com/Ernmuffin) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0722) |
+| 722 Rowlet | Idle | Reimu\_needs\_$$$, [Emmuffin](https://twitter.com/Ernmuffin) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0722) |
+| 722 Rowlet | Sleep | Reimu\_needs\_$$$, [Emmuffin](https://twitter.com/Ernmuffin) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0722) |
+| 778 Mimikyu | Walk | JFain, [G〜](https://bsky.app/profile/justtr4sh.pmd.social), baronessfaron | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0778) |
+| 778 Mimikyu | Idle | JFain, [G〜](https://bsky.app/profile/justtr4sh.pmd.social), baronessfaron | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0778) |
+| 778 Mimikyu | Sleep | JFain, [G〜](https://bsky.app/profile/justtr4sh.pmd.social), baronessfaron | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0778) |
+| 813 Scorbunny | Walk | [NeroIntruder](https://twitter.com/NeroIntruder), [Emmuffin](https://twitter.com/Ernmuffin) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0813) |
+| 813 Scorbunny | Idle | [NeroIntruder](https://twitter.com/NeroIntruder), [Emmuffin](https://twitter.com/Ernmuffin) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0813) |
+| 813 Scorbunny | Sleep | [NeroIntruder](https://twitter.com/NeroIntruder) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0813) |
 | 835 Yamper | Walk | RelicCipher, baronessfaron, [Emmuffin](https://twitter.com/Ernmuffin) | [Walk](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0835) |
 | 835 Yamper | Idle | RelicCipher, baronessfaron, [Emmuffin](https://twitter.com/Ernmuffin) | [Idle](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0835) |
 | 835 Yamper | Sleep | RelicCipher, baronessfaron, [Emmuffin](https://twitter.com/Ernmuffin) | [Sleep](https://github.com/PMDCollab/SpriteCollab/tree/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310/sprite/0835) |

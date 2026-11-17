@@ -23,6 +23,8 @@ interface Companion {
   grip: HTMLButtonElement;
   sprite: HTMLElement;
   species: Pokemon;
+  workAnimation: 'walk' | 'shock' | 'tumbleback';
+  workSelect: HTMLFieldSetElement;
   animation: Animation | null;
   saving: boolean;
   choiceRevision: number;
@@ -61,9 +63,15 @@ const orderAnnouncement: HTMLElement = element('order-announcement');
 const workspaceTooltip: HTMLElement = element('workspace-tooltip');
 const workspaceTooltipText: HTMLElement = element('workspace-tooltip-text');
 const speciesPanel: HTMLElement = element('species-panel');
+speciesPanel.tabIndex = -1;
 const speciesSearch: HTMLInputElement = element('species-search');
 const speciesResults: HTMLElement = element('species-results');
 const speciesEmpty: HTMLElement = element('species-empty');
+const battleMenu: HTMLElement = element('battle-menu');
+const battleFight: HTMLButtonElement = element('battle-fight');
+const battlePokemon: HTMLButtonElement = element('battle-pokemon');
+const battleWork: HTMLElement = element('battle-work');
+const battleSpecies: HTMLElement = element('battle-species');
 let speciesOwner: Companion | undefined;
 let speciesMatches: Pokemon[] = [];
 let speciesIndex: number = 0;
@@ -112,6 +120,9 @@ function showError(error: unknown): void {
 function closeSpecies(restore: boolean = false): void {
   const owner: Companion | undefined = speciesOwner;
   speciesOwner = undefined;
+  speciesPanel.setAttribute('aria-busy', 'false');
+  element('battle-save-status').textContent = '';
+  owner?.workSelect.remove();
   owner?.select.setAttribute('aria-expanded', 'false');
   if (speciesPanel.matches(':popover-open')) speciesPanel.hidePopover();
   if (restore && owner && !owner.disposed && !owner.card.closest('[hidden]')) owner.select.focus({ preventScroll: true });
@@ -120,6 +131,10 @@ function closeSpecies(restore: boolean = false): void {
 function renderSpecies(): void {
   const owner: Companion | undefined = speciesOwner;
   if (!owner) return;
+  element('battle-prompt').textContent = `What will ${owner.species.name} do?`;
+  battleFight.disabled = owner.species.id !== 25;
+  battleFight.title = owner.species.id === 25 ? 'Change work animation' : 'Work animation choices are currently available for Pikachu only';
+  if (owner.species.id !== 25 && !battleWork.hidden) showBattlePage('menu');
   const optionFocused: boolean = speciesResults.contains(document.activeElement);
   speciesMatches = POKEMON.filter((pokemon: Pokemon): boolean => pokemon.name.toLowerCase().includes(speciesSearch.value.trim().toLowerCase()));
   speciesIndex = Math.max(0, Math.min(speciesIndex, speciesMatches.length - 1));
@@ -149,26 +164,71 @@ function renderSpecies(): void {
 function openSpecies(companion: Companion): void {
   if (companion.disposed || companion.select.disabled) return;
   if (speciesOwner === companion) { closeSpecies(true); return; }
+  if (companion.saving) return;
   closeSpecies();
   hideWorkspaceTooltip();
   speciesOwner = companion;
   speciesSearch.value = '';
   speciesIndex = Math.max(0, POKEMON.indexOf(companion.species));
   companion.select.setAttribute('aria-expanded', 'true');
+  showBattlePage('menu');
   speciesPanel.showPopover();
   renderSpecies();
+  positionBattleMenu();
+  (battleFight.disabled ? battlePokemon : battleFight).focus({ preventScroll: true });
+}
+
+function positionBattleMenu(): void {
+  const companion: Companion | undefined = speciesOwner;
+  if (!companion) return;
   const bounds: DOMRect = list.parentElement!.getBoundingClientRect();
   const anchor: DOMRect = companion.select.getBoundingClientRect();
   speciesPanel.style.width = `${Math.max(0, Math.min(240, bounds.width - 16))}px`;
   speciesPanel.style.maxHeight = `${Math.max(0, bounds.height - 16)}px`;
   speciesPanel.style.left = `${Math.max(bounds.left + 8, Math.min(anchor.left, bounds.right - speciesPanel.offsetWidth - 8))}px`;
-  speciesPanel.style.top = `${Math.max(bounds.top + 8, Math.min(anchor.bottom + 6, bounds.bottom - speciesPanel.offsetHeight - 8))}px`;
-  speciesSearch.focus({ preventScroll: true });
+  const height: number = speciesPanel.offsetHeight;
+  const below: number = anchor.bottom + 6;
+  const above: number = anchor.top - height - 6;
+  const top: number = below + height <= bounds.bottom - 8 ? below : above;
+  speciesPanel.style.top = `${Math.max(bounds.top + 8, Math.min(top, bounds.bottom - height - 8))}px`;
 }
+
+function paintSaveStatus(companion: Companion, message: string, busy: boolean = false): void {
+  if (speciesOwner !== companion) return;
+  const status: HTMLElement = element('battle-save-status');
+  status.textContent = message;
+  speciesPanel.setAttribute('aria-busy', String(busy));
+  if (speciesPanel.matches(':popover-open')) positionBattleMenu();
+}
+
+function showBattlePage(page: 'menu' | 'species' | 'work'): void {
+  const owner: Companion | undefined = speciesOwner;
+  if (!owner) return;
+  battleMenu.hidden = page !== 'menu';
+  battleWork.hidden = page !== 'work';
+  battleSpecies.hidden = page !== 'species';
+  element('battle-prompt').textContent = `What will ${owner.species.name} do?`;
+  battleFight.disabled = owner.species.id !== 25;
+  battleFight.title = owner.species.id === 25 ? 'Change work animation' : 'Work animation choices are currently available for Pikachu only';
+  if (page === 'work') {
+    owner.workSelect.setAttribute('aria-labelledby', 'battle-work-label');
+    element('battle-work-control').replaceChildren(owner.workSelect);
+    owner.workSelect.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+  } else if (page === 'species') {
+    renderSpecies();
+    speciesSearch.focus({ preventScroll: true });
+  } else (battleFight.disabled ? battlePokemon : battleFight).focus({ preventScroll: true });
+  if (speciesPanel.matches(':popover-open')) positionBattleMenu();
+}
+
+battleFight.addEventListener('click', (): void => { if (!battleFight.disabled) showBattlePage('work'); });
+battlePokemon.addEventListener('click', (): void => { showBattlePage('species'); });
 
 async function saveSpecies(companion: Companion, next: Pokemon): Promise<void> {
   if (companion.disposed || companion.saving) return;
   companion.saving = true;
+  paintSaveStatus(companion, 'Saving…', true);
+  companion.workSelect.disabled = true;
   companion.choiceRevision++;
   renderSpecies();
   try {
@@ -182,26 +242,50 @@ async function saveSpecies(companion: Companion, next: Pokemon): Promise<void> {
     paintError();
     if (speciesOwner === companion) closeSpecies(speciesPanel.contains(document.activeElement));
   } catch (error: unknown) {
-    if (!companion.disposed) showError(error);
+    if (!companion.disposed) {
+      showError(error);
+      paintSaveStatus(companion, 'Save failed. Try again.');
+    }
   } finally {
     companion.saving = false;
+    companion.workSelect.disabled = false;
     if (speciesOwner === companion) renderSpecies();
+    if (!companion.disposed) void loadChoice(companion);
   }
 }
 
 speciesSearch.addEventListener('input', (): void => { speciesIndex = 0; renderSpecies(); });
 speciesPanel.addEventListener('keydown', (event: KeyboardEvent): void => {
   if (event.isComposing) return;
-  if (event.key === 'Escape') { event.preventDefault(); closeSpecies(true); }
-  else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+  if (event.target === speciesSearch && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
     event.preventDefault();
     speciesIndex = (speciesIndex + (event.key === 'ArrowDown' ? 1 : -1) + speciesMatches.length) % (speciesMatches.length || 1);
     renderSpecies();
     speciesSearch.focus({ preventScroll: true });
+  } else if (event.target instanceof HTMLButtonElement &&
+      (battleMenu.contains(event.target) || battleWork.contains(event.target)) &&
+      ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+    event.preventDefault();
+    const group: HTMLElement = battleMenu.hidden ? battleWork : battleMenu;
+    const buttons: HTMLButtonElement[] = Array.from(group.querySelectorAll<HTMLButtonElement>('button')).filter((button: HTMLButtonElement): boolean => !button.disabled);
+    const index: number = buttons.indexOf(event.target);
+    if (group === battleWork && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      const target: number = index < 2 ? index + 2 : index - 2;
+      buttons[target]?.focus({ preventScroll: true });
+      return;
+    }
+    const direction: number = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
+    buttons[(index + direction + buttons.length) % buttons.length]?.focus({ preventScroll: true });
   } else if (event.key === 'Enter' && event.target === speciesSearch) {
     event.preventDefault();
     if (speciesOwner && speciesMatches[speciesIndex]) void saveSpecies(speciesOwner, speciesMatches[speciesIndex]);
-  } else if (event.key === 'Tab') closeSpecies(true);
+  }
+});
+speciesPanel.addEventListener('pointerover', (event: PointerEvent): void => {
+  const button: HTMLButtonElement | null = event.target instanceof Element ? event.target.closest('button') : null;
+  if (button && !button.disabled && (battleMenu.contains(button) || battleWork.contains(button))) {
+    button.focus({ preventScroll: true });
+  }
 });
 document.addEventListener('pointerdown', (event: PointerEvent): void => {
   if (speciesOwner && event.target instanceof Node && !speciesPanel.contains(event.target) && !speciesOwner.select.contains(event.target)) closeSpecies();
@@ -445,31 +529,67 @@ function animateSprite(companion: Companion): void {
   companion.animation = null;
   if (companion.disposed) return;
   const state: AgentRow['state'] = companion.row.state;
-  const sheet: SpriteAnimation = companion.species.animations[
-    state === 'working' ? 'walk' : state === 'done' ? 'sleep' : 'idle'
-  ];
-  const scale: number = companion.species.scale;
+  const sheet: SpriteAnimation = state === 'working'
+    ? (companion.workAnimation === 'tumbleback' ? companion.species.animations.tumble : undefined) ??
+      companion.species.animations[companion.workAnimation ?? 'shock'] ?? companion.species.animations.walk
+    : companion.species.animations[state === 'done' ? 'sleep' : 'idle'];
+  const scale: number = sheet.scale ?? companion.species.scale;
   const width: number = sheet.width * scale;
   const height: number = sheet.height * scale;
   const sprite: HTMLElement = companion.sprite;
+  if (companion.workSelect) {
+    companion.workSelect.hidden = companion.species.id !== 25;
+    for (const button of Array.from(companion.workSelect.querySelectorAll('button'))) {
+      button.setAttribute('aria-pressed', String(button.value === companion.workAnimation));
+    }
+    companion.workSelect.disabled = companion.saving || companion.select.disabled;
+  }
+  const turning: boolean = state === 'working' && sheet === companion.species.animations.shock;
+  const tumbling: boolean = state === 'working' &&
+    (sheet === companion.species.animations.tumble || sheet === companion.species.animations.tumbleback);
+  sprite.dataset.turning = String(turning);
+  sprite.dataset.tumbling = String(tumbling);
   sprite.style.width = `${width}px`;
   sprite.style.height = `${height}px`;
   sprite.style.backgroundImage = `url("${sheet.path}")`;
   sprite.style.backgroundSize = `${width * sheet.columns}px auto`;
   sprite.style.backgroundPosition = `0px ${-sheet.row * height}px`;
-  sprite.style.transform = `translateY(${sheet.bottomOffset * scale}px)`;
+  sprite.style.transform = tumbling
+    ? `translateY(${sheet.rotatedBottomOffsets![0] * scale}px) rotate(90deg)`
+    : `translateY(${sheet.bottomOffset * scale}px)`;
   if (paused || state === 'unknown') return;
   const durations: number[] = sheet.durations.slice(0, sheet.columns);
-  const total: number = durations.reduce((sum: number, duration: number): number => sum + duration, 0);
+  const cycle: number = durations.reduce((sum: number, duration: number): number => sum + duration, 0);
+  const segments: number = turning ? 8 : tumbling ? 2 : 1;
+  const total: number = tumbling
+    ? cycle + companion.species.animations.tumbleback!.durations.reduce((sum: number, duration: number): number => sum + duration, 0)
+    : cycle * segments;
   const frames: Keyframe[] = [];
   let elapsed: number = 0;
-  for (let index: number = 0; index < durations.length; index++) {
-    frames.push({ backgroundPosition: `${-index * width}px ${-sheet.row * height}px`, offset: elapsed / total, easing: 'steps(1, end)' });
-    elapsed += durations[index];
+  for (let segment: number = 0; segment < segments; segment++) {
+    const segmentSheet: SpriteAnimation = tumbling && segment === 1 ? companion.species.animations.tumbleback! : sheet;
+    const segmentScale: number = segmentSheet.scale ?? companion.species.scale;
+    const segmentWidth: number = segmentSheet.width * segmentScale;
+    const segmentHeight: number = segmentSheet.height * segmentScale;
+    const segmentDurations: number[] = segmentSheet.durations;
+    const row: number = turning ? segment : sheet.row;
+    for (let index: number = 0; index < segmentDurations.length; index++) {
+      const frame: Keyframe = { backgroundPosition: `${-index * segmentWidth}px ${-row * segmentHeight}px`, offset: elapsed / total, easing: 'steps(1, end)' };
+      if (tumbling) {
+        const progress: number = index / (segmentDurations.length - 1);
+        frame.backgroundImage = `url("${segmentSheet.path}")`;
+        frame.backgroundSize = `${segmentWidth * segmentSheet.columns}px auto`;
+        frame.width = `${segmentWidth}px`;
+        frame.height = `${segmentHeight}px`;
+        frame.transform = `translate(${segment === 0 ? -35 + 70 * progress : 35 - 70 * progress}px, ${segmentSheet.rotatedBottomOffsets![segment] * segmentScale}px) rotate(${segment === 0 ? 90 : -90}deg)`;
+      }
+      frames.push(frame);
+      elapsed += segmentDurations[index];
+    }
   }
   if (frames.length > 1) {
     frames.push({ ...frames[frames.length - 1], offset: 1 });
-    companion.animation = sprite.animate(frames, { duration: total, iterations: Infinity });
+    companion.animation = sprite.animate(frames, { duration: total * (turning || tumbling ? 4 : 1), iterations: Infinity });
   }
 }
 
@@ -479,7 +599,13 @@ function updateMotion(): void {
   motionButton.title = paused ? 'Resume motion' : 'Pause motion';
   motionButton.setAttribute('aria-label', motionButton.title);
   motionButton.setAttribute('aria-pressed', String(paused));
-  for (const companion of companions.values()) animateSprite(companion);
+  for (const companion of companions.values()) {
+    if (paused || reducedMotion.matches) {
+      companion.focus.classList.remove('selection-hop');
+      companion.signal.classList.remove('state-pop');
+    }
+    animateSprite(companion);
+  }
   audioVisualizer?.setMotionPaused(paused);
 }
 
@@ -488,15 +614,27 @@ async function loadChoice(companion: Companion): Promise<void> {
   try {
     if (!companion.storageKey) companion.storageKey = await choiceKey(companion.row.id);
     if (companion.disposed) return;
-    const result: { value: unknown } = await orca.host.call('storage.get', { key: companion.storageKey }) as { value: unknown };
+    const [result, work]: { value: unknown }[] = await Promise.all([
+      orca.host.call('storage.get', { key: companion.storageKey }),
+      orca.host.call('storage.get', { key: `${companion.storageKey}.work` }).catch((error: unknown): { value: unknown } => {
+        if (!companion.disposed && revision === companion.choiceRevision && !companion.saving) showError(error);
+        return { value: companion.workAnimation };
+      })
+    ]) as { value: unknown }[];
     if (companion.disposed || revision !== companion.choiceRevision || companion.saving) return;
     const species: Pokemon | undefined = POKEMON.find((pokemon: Pokemon): boolean => pokemon.id === result.value);
     companion.species = species ?? POKEMON[defaultPokemon(companion.row.id, POKEMON.length)];
+    companion.workAnimation = work.value === 'walk' || work.value === 'tumbleback' ? work.value : 'shock';
     companion.select.title = `Change Pokémon: ${companion.species.name}`;
     if (speciesOwner === companion) renderSpecies();
     animateSprite(companion);
-  } catch (error: unknown) { if (!companion.disposed) showError(error); }
-  finally { if (!companion.disposed && !companion.saving) companion.select.disabled = false; }
+  } catch (error: unknown) { if (!companion.disposed && revision === companion.choiceRevision && !companion.saving) showError(error); }
+  finally {
+    if (!companion.disposed && revision === companion.choiceRevision && !companion.saving) {
+      companion.select.disabled = false;
+      companion.workSelect.disabled = false;
+    }
+  }
 }
 
 function createCompanion(row: AgentRow, storageKey: string): Companion {
@@ -507,9 +645,15 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
   card.innerHTML = '<div class="card-top"><button class="drag-grip" type="button" disabled title="Drag to rearrange, or use Arrow Up and Arrow Down">⠿</button><div class="identity"><h2></h2></div><span class="state"><span class="state-label"></span></span></div><div class="sprite-area"><button type="button" class="habitat"><span class="ground" aria-hidden="true"></span><span class="actor" aria-hidden="true"><span class="sprite"></span></span><span class="signal" aria-hidden="true"></span></button><button type="button" class="agent-icon" data-agent="unknown"></button><button type="button" class="species-control species-picker" aria-haspopup="dialog" aria-expanded="false" aria-controls="species-panel" title="Change Pokémon"><span class="pokeball" aria-hidden="true"></span></button></div>';
   const select: HTMLButtonElement = card.querySelector('.species-picker')!;
   const species: Pokemon = POKEMON[defaultPokemon(row.id, POKEMON.length)];
+  const workSelect: HTMLFieldSetElement = document.createElement('fieldset');
+  workSelect.className = 'work-animation';
+  workSelect.setAttribute('aria-label', 'Pikachu work animation');
+  workSelect.innerHTML = '<button type="button" value="walk">Walk</button><button type="button" value="shock">Shock</button><button type="button" value="tumbleback">Tumble</button>';
+  workSelect.hidden = species.id !== 25;
+  workSelect.disabled = true;
   select.disabled = true;
   const companion: Companion = {
-    row, card, select, species,
+    row, card, select, species, workSelect, workAnimation: 'shock',
     title: card.querySelector('h2')!,
     agentBadge: card.querySelector('.agent-icon')!,
     status: card.querySelector('.state-label')!,
@@ -519,6 +663,49 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
     sprite: card.querySelector('.sprite')!,
     animation: null, saving: false, choiceRevision: 0, storageKey, disposed: false
   };
+  workSelect.addEventListener('click', async (event: MouseEvent): Promise<void> => {
+    const button: HTMLButtonElement | null = event.target instanceof Element ? event.target.closest('button') : null;
+    if (!button || !workSelect.contains(button)) return;
+    if (companion.disposed || companion.saving || companion.species.id !== 25) return;
+    if (workSelect.contains(document.activeElement)) speciesPanel.focus({ preventScroll: true });
+    const next: Companion['workAnimation'] = button.value === 'walk' || button.value === 'tumbleback' ? button.value : 'shock';
+    companion.saving = true;
+    paintSaveStatus(companion, 'Saving…', true);
+    companion.choiceRevision++;
+    workSelect.disabled = true;
+    try {
+      await orca.host.call('storage.set', { key: `${companion.storageKey}.work`, value: next });
+      if (companion.disposed) return;
+      companion.workAnimation = next;
+      if (!paused && !reducedMotion.matches) {
+        companion.focus.classList.add('selection-hop');
+        companion.focus.addEventListener('animationend', (): void => {
+          companion.focus.classList.remove('selection-hop');
+        }, { once: true });
+      }
+      operationError = '';
+      paintError();
+      if (speciesOwner === companion) {
+        companion.select.disabled = false;
+        closeSpecies(speciesPanel.contains(document.activeElement));
+      }
+    } catch (error: unknown) {
+      if (!companion.disposed) {
+        showError(error);
+        paintSaveStatus(companion, 'Save failed. Try again.');
+      }
+    } finally {
+      companion.saving = false;
+      if (!companion.disposed) {
+        companion.select.disabled = false;
+        animateSprite(companion);
+        if (speciesOwner === companion && !battleWork.hidden && speciesPanel.contains(document.activeElement)) {
+          button.focus({ preventScroll: true });
+        }
+        void loadChoice(companion);
+      }
+    }
+  });
   companion.agentBadge.addEventListener('mouseenter', (): void => {
     if (document.activeElement === companion.agentBadge) { showWorkspaceTooltip(companion); return; }
     hideWorkspaceTooltip();
@@ -583,6 +770,7 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
   companion.focus.addEventListener('contextmenu', (event: MouseEvent): void => {
     event.preventDefault();
     openSpecies(companion);
+    if (speciesOwner === companion) showBattlePage('species');
   });
   select.addEventListener('click', (): void => { openSpecies(companion); });
   projects.get(row.projectId)!.list.append(card);
@@ -723,20 +911,25 @@ function statusChanged(payload: unknown): void {
 }
 
 async function start(): Promise<void> {
-  list.parentElement!.addEventListener('scroll', (): void => { closeSpecies(); });
-  new ResizeObserver((): void => { closeSpecies(); }).observe(list.parentElement!);
+  list.parentElement!.addEventListener('scroll', (): void => { closeSpecies(speciesPanel.contains(document.activeElement)); });
+  new ResizeObserver((): void => { closeSpecies(speciesPanel.contains(document.activeElement)); }).observe(list.parentElement!);
   list.addEventListener('dragstart', (): void => { closeSpecies(); });
   list.addEventListener('click', (event: MouseEvent): void => {
     if (event.target instanceof Element && event.target.closest('.project-toggle')) closeSpecies();
   });
-  window.addEventListener('resize', (): void => { closeSpecies(); });
+  window.addEventListener('resize', (): void => { closeSpecies(speciesPanel.contains(document.activeElement)); });
   document.addEventListener('visibilitychange', (): void => { closeSpecies(); });
   list.parentElement!.addEventListener('scroll', hideWorkspaceTooltip);
   new ResizeObserver(hideWorkspaceTooltip).observe(list.parentElement!);
   list.addEventListener('pointerdown', hideWorkspaceTooltip);
   list.addEventListener('dragstart', hideWorkspaceTooltip);
   window.addEventListener('resize', hideWorkspaceTooltip);
-  document.addEventListener('keydown', (event: KeyboardEvent): void => { if (event.key === 'Escape') hideWorkspaceTooltip(); });
+  document.addEventListener('keydown', (event: KeyboardEvent): void => {
+    if (event.isComposing || event.key !== 'Escape') return;
+    if (event.target instanceof Element && event.target.closest('dialog:modal')) return;
+    hideWorkspaceTooltip();
+    if (speciesOwner) { event.preventDefault(); closeSpecies(true); }
+  });
   updateMotion();
   refreshButton.addEventListener('click', (): void => { sortRequested = true; audioVisualizer?.refresh(); void refresh(); });
   sortSelect.addEventListener('change', (): void => {
@@ -764,7 +957,7 @@ async function start(): Promise<void> {
     }
     audioVisualizer?.preferenceChanged(event.key);
     for (const companion of companions.values()) {
-      if (companion.storageKey === event.key && !companion.saving) void loadChoice(companion);
+      if ((companion.storageKey === event.key || `${companion.storageKey}.work` === event.key) && !companion.saving) void loadChoice(companion);
     }
   });
   document.addEventListener('visibilitychange', (): void => { hideWorkspaceTooltip(); if (!document.hidden) scheduleRefresh(); });

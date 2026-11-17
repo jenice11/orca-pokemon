@@ -19,6 +19,7 @@ interface BrowserCase extends Scenario {
 }
 const scenarios: Scenario[] = [
   { module: 'browser', method: 'run' },
+  { module: 'browser', method: 'runChoiceReadRaces' },
   { module: 'order-browser', method: 'run', reloadMethod: 'verifyReload' },
   { module: 'order-browser', method: 'runRaces' },
   { module: 'project-browser', method: 'run', reloadMethod: 'verifyReload' },
@@ -33,7 +34,7 @@ const scenarios: Scenario[] = [
 ];
 const cases: BrowserCase[] = scenarios.flatMap((scenario: Scenario): BrowserCase[] =>
   [260, 320, 480].flatMap((width: number): BrowserCase[] =>
-    (['no-preference'] as const)
+    (scenario.module === 'browser' ? ['no-preference', 'reduce'] as const : ['no-preference'] as const)
       .map((reducedMotion: 'no-preference' | 'reduce'): BrowserCase => ({
         ...scenario, width, height: 760, textScale: 1, reducedMotion
       }))));

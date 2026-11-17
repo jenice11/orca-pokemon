@@ -5,6 +5,7 @@ interface Fixture {
   agents: AgentRow[];
   failStorage: boolean;
   failRoster: boolean;
+  notifyStorage(key: string): void;
   calls: { name?: string; method?: string; params?: { key: string } }[];
   emit(event: string, payload: unknown): void;
 }
@@ -30,6 +31,7 @@ async function until(condition: () => boolean): Promise<void> {
 function button(id: string): HTMLButtonElement { return document.getElementById(id) as HTMLButtonElement; }
 function select(): HTMLButtonElement { return document.querySelector('.species-picker')!; }
 function searchSpecies(query: string): void {
+  if (!document.getElementById('battle-menu')!.hidden) button('battle-pokemon').click();
   const search: HTMLInputElement = document.querySelector('#species-search')!;
   search.value = query;
   search.dispatchEvent(new Event('input'));
@@ -46,12 +48,51 @@ async function refresh(): Promise<void> {
   await until((): boolean => !button('refresh').disabled);
 }
 
+export async function runChoiceReadRaces(): Promise<string> {
+  await until((): boolean => document.querySelectorAll('.species-picker:enabled').length === 4);
+  const key: string = firstCard().dataset.orderKey!;
+  const call: typeof orca.host.call = orca.host.call;
+  for (let index: number = 0; index < 2; index++) {
+    const delayedKey: string = index === 0 ? key : `${key}.work`;
+    const species: Pokemon = POKEMON.find((pokemon: Pokemon): boolean => pokemon.id === (index === 0 ? 25 : 133))!;
+    let rejectOld: ((reason: Error) => void) | undefined;
+    orca.host.call = async (method: string, params: unknown): Promise<unknown> => {
+      if (method === 'storage.get' && (params as { key: string }).key === delayedKey && !rejectOld) {
+        return new Promise<unknown>((_, reject): void => { rejectOld = reject; });
+      }
+      return call(method, params);
+    };
+    try {
+      fixture.notifyStorage(key);
+      await until((): boolean => rejectOld !== undefined);
+      await call('storage.set', { key, value: species.id });
+      await until((): boolean => select().title.includes(species.name));
+      rejectOld!(new Error('Obsolete choice read failed'));
+      await new Promise<number>(requestAnimationFrame);
+      check(document.getElementById('error')!.hidden, 'Obsolete species and work reads must not report errors after a newer successful read.');
+    } finally { orca.host.call = call; }
+  }
+  orca.host.call = async (method: string, params: unknown): Promise<unknown> => {
+    if (method === 'storage.get' && (params as { key: string }).key === `${key}.work`) throw new Error('Current work read failed');
+    return call(method, params);
+  };
+  try {
+    fixture.notifyStorage(`${key}.work`);
+    await until((): boolean => !document.getElementById('error')!.hidden);
+    check(document.getElementById('error')!.textContent!.includes('Current work read failed'), 'Current read failures must remain visible.');
+  } finally { orca.host.call = call; }
+  return 'obsolete choice-read errors stay hidden while current failures remain visible';
+}
+
 export async function run(): Promise<string[]> {
   const passed: string[] = [];
+  const reduceMotion: boolean = matchMedia('(prefers-reduced-motion: reduce)').matches;
   await until((): boolean => document.querySelectorAll('.agent-card').length === 4 && !select().disabled);
   await orca.host.call('storage.set', { key: 'cards.order.v1', value: [] });
   await until((): boolean => firstCard().querySelector('h2')!.textContent === fixture.agents[0].title);
-  check(document.getAnimations().length >= 4, 'Sprite and status animations must run.');
+  if (reduceMotion) {
+    check(document.body.classList.contains('paused') && document.getAnimations().every((animation: Animation): boolean => animation.playState !== 'running'), 'Reduced motion must start with sprite and status animations stopped.');
+  } else check(document.getAnimations().length >= 4, 'Sprite and status animations must run.');
   check(document.documentElement.scrollWidth <= innerWidth, 'Panel must not overflow horizontally.');
   check(document.querySelector('.card-bottom') === null, 'Species controls must not reserve a bottom row on every card.');
   check(getComputedStyle(document.querySelector('.habitat')!).height === '72px', 'Agent cards must use the compact sprite area.');
@@ -129,11 +170,12 @@ export async function run(): Promise<string[]> {
     check(Math.abs(badge.offsetLeft + badge.offsetWidth - (header.offsetLeft + header.offsetWidth - parseFloat(getComputedStyle(header).paddingRight))) <= 1, 'Agent indicator must stay on the right, including in narrow panels.');
     check(getComputedStyle(badge.querySelector('.state-label')!).clipPath === 'inset(50%)', 'State text must stay accessible but visually hidden.');
     if (card.dataset.state === 'working') {
-      check(style.animationName === 'agent-working' && style.borderTopColor === 'rgb(217, 119, 6)', 'Working must use an orange loader.');
+      check(style.animationName === (reduceMotion ? 'none' : 'agent-working') && style.borderTopColor === 'rgb(217, 119, 6)', 'Working must use an orange indicator and respect reduced motion.');
     } else if (card.dataset.state === 'blocked') {
       check(style.backgroundColor === 'rgb(220, 38, 38)', 'Permission and prompt requests must use red.');
     } else if (card.dataset.state === 'done') {
       check(style.backgroundColor === 'rgb(22, 163, 74)', 'Done must use green.');
+      check(getComputedStyle(card.querySelector('.sprite')!).backgroundImage.includes('Sleep'), 'Done companions must use sleeping sprites.');
     }
   }
   passed.push('four states render with animations and no horizontal overflow');
@@ -166,6 +208,99 @@ export async function run(): Promise<string[]> {
   check(select().title.includes('Pikachu'), 'Saved trigger must name the new species.');
   await refresh();
   check(select().title.includes('Pikachu'), 'Species choice must survive refresh.');
+  select().click();
+  check(!document.getElementById('battle-menu')!.hidden, 'Poké Ball must open the battle commands first.');
+  check(getComputedStyle(document.getElementById('species-panel')!).backgroundColor === 'rgb(32, 35, 42)', 'Popup must use the dark palette.');
+  button('battle-fight').dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+  check(document.activeElement === button('battle-fight'), 'Hover must move the menu cursor.');
+  button('battle-pokemon').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  check(document.activeElement === button('battle-fight'), 'Arrow keys must move focus between battle commands.');
+  button('battle-fight').click();
+  const workAnimation: HTMLFieldSetElement = document.querySelector('#battle-work .work-animation')!;
+  check(!workAnimation.hidden && workAnimation.querySelector('button[aria-pressed="true"]')?.getAttribute('value') === 'shock', 'Pikachu must expose work animation buttons, defaulting to Shock.');
+  check(workAnimation.querySelectorAll('button').length === 3, 'Work animation must offer three buttons.');
+  const workButtons: HTMLButtonElement[] = Array.from(workAnimation.querySelectorAll('button'));
+  check(workButtons[0].offsetTop === workButtons[1].offsetTop && workButtons[2].offsetTop > workButtons[0].offsetTop &&
+    workButtons[2].offsetLeft === workButtons[0].offsetLeft &&
+    workButtons[1].getBoundingClientRect().left >= workButtons[0].getBoundingClientRect().right, 'Work choices must use a two-column layout without overlap.');
+  for (const choice of Array.from(workAnimation.querySelectorAll('button'))) {
+    check(choice.scrollWidth <= choice.clientWidth, 'Work button labels must fit without clipping.');
+  }
+  workAnimation.querySelector<HTMLButtonElement>('button[value="shock"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  check(document.activeElement === workAnimation.querySelector('button[value="tumbleback"]'), 'Arrow keys must move focus between animation buttons.');
+  check(workAnimation.querySelector('button[aria-pressed="true"]')?.getAttribute('value') === 'shock', 'Moving the cursor must not change the saved animation.');
+  const walkButton: HTMLButtonElement = workAnimation.querySelector('button[value="walk"]')!;
+  fixture.failStorage = true;
+  walkButton.focus();
+  walkButton.click();
+  await until((): boolean => !workAnimation.disabled);
+  check(document.getElementById('species-panel')!.matches(':popover-open') && document.activeElement === walkButton, 'Failed work saves must keep the menu open and restore the chosen button focus.');
+  const saveStatus: HTMLElement = document.getElementById('battle-save-status')!;
+  check(saveStatus.getAttribute('role') === 'status' && saveStatus.getAttribute('aria-live') === 'polite' &&
+    !saveStatus.hidden && saveStatus.textContent === 'Save failed. Try again.', 'Save failures must expose a visible polite announcement.');
+  check(getComputedStyle(walkButton).outlineStyle !== 'none', 'Failed work saves must retain a visible focus outline.');
+  fixture.failStorage = false;
+  const saveCall: typeof orca.host.call = orca.host.call;
+  let releaseSave: (() => void) | undefined;
+  orca.host.call = async (method: string, params: unknown): Promise<unknown> => {
+    if (method === 'storage.set' && (params as { key: string }).key.endsWith('.work')) {
+      await new Promise<void>((resolve): void => { releaseSave = resolve; });
+    }
+    return saveCall(method, params);
+  };
+  walkButton.click();
+  await until((): boolean => releaseSave !== undefined);
+  button('motion').focus();
+  releaseSave!();
+  await until((): boolean => !workAnimation.disabled);
+  check(!document.getElementById('species-panel')!.matches(':popover-open') && document.activeElement === button('motion'), 'Successful work saves must not steal focus moved outside while saving.');
+  releaseSave = undefined;
+  select().click();
+  button('battle-fight').click();
+  walkButton.focus();
+  walkButton.click();
+  await until((): boolean => releaseSave !== undefined);
+  document.getElementById('species-panel')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check(document.activeElement === select(), 'Escape during a pending save must restore Poké Ball focus.');
+  releaseSave!();
+  await until((): boolean => !workAnimation.disabled);
+  orca.host.call = saveCall;
+  select().click();
+  button('battle-fight').click();
+  workAnimation.querySelector<HTMLButtonElement>('button[value="walk"]')!.click();
+  await until((): boolean => !workAnimation.disabled);
+  check(!document.getElementById('species-panel')!.matches(':popover-open'), 'Saving a work animation must close the popup.');
+  check(document.activeElement === select(), 'Saving a work animation must restore Poké Ball focus.');
+  if (!document.body.classList.contains('paused') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    check(firstCard().querySelector('.habitat')!.classList.contains('selection-hop'), 'A successful animation choice must trigger a confirmation hop.');
+    button('motion').click();
+    check(!firstCard().querySelector('.habitat')!.classList.contains('selection-hop'), 'Pausing must clear the confirmation hop.');
+    button('motion').click();
+    check(!firstCard().querySelector('.habitat')!.classList.contains('selection-hop'), 'Resuming must not replay the confirmation hop.');
+  }
+  check(firstCard().querySelector<HTMLElement>('.sprite')!.dataset.turning === 'false', 'Walk must disable Shock turning.');
+  check(fixture.calls.some((call): boolean => call.method === 'storage.set' && call.params!.key.endsWith('.work') && (call.params as { key: string; value?: unknown }).value === 'walk'), 'Work animation must save separately from species.');
+  select().click();
+  button('battle-fight').click();
+  workAnimation.querySelector<HTMLButtonElement>('button[value="tumbleback"]')!.click();
+  await until((): boolean => !workAnimation.disabled);
+  const tumbleSprite: HTMLElement = firstCard().querySelector('.sprite')!;
+  if (reduceMotion) {
+    check(tumbleSprite.getAnimations().length === 0, 'Tumble must stay still with reduced motion.');
+  } else {
+    const tumbleAnimation: Animation = tumbleSprite.getAnimations()[0];
+    tumbleAnimation.currentTime = 800;
+    check(getComputedStyle(tumbleSprite).backgroundImage.includes('/Tumble-Anim.png'), 'Rightward travel must use Tumble.');
+    tumbleAnimation.currentTime = 2400;
+    check(getComputedStyle(tumbleSprite).backgroundImage.includes('/TumbleBack-Anim.png'), 'Leftward travel must use TumbleBack.');
+  }
+  select().click();
+  button('battle-fight').click();
+  workAnimation.querySelector<HTMLButtonElement>('button[value="shock"]')!.click();
+  await until((): boolean => !workAnimation.disabled);
+  passed.push('Pikachu work animation choice saves and switches immediately');
+  check(!document.getElementById('battle-back'), 'Popup must not include a Back button.');
+  document.getElementById('species-panel')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   check(fixture.calls.filter((call): boolean => call.method === 'storage.set').every((call): boolean => call.params!.key.length <= 256), 'Storage keys must be bounded.');
   (document.querySelector('.habitat') as HTMLButtonElement).click();
   await until((): boolean => !(document.querySelector('.habitat') as HTMLButtonElement).disabled);
@@ -182,14 +317,19 @@ export async function run(): Promise<string[]> {
   check(document.activeElement === lastMenu && !document.getElementById('species-panel')!.matches(':popover-open'), 'Escape must close and restore trigger focus.');
   lastMenu.click();
   document.getElementById('species-search')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-  check(document.activeElement === lastMenu && !document.getElementById('species-panel')!.matches(':popover-open'), 'Tab must resume navigation from the owning trigger.');
+  check(document.getElementById('species-panel')!.matches(':popover-open'), 'Tab must allow navigation between battle controls.');
+  button('motion').focus();
+  button('motion').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, isComposing: true }));
+  check(document.getElementById('species-panel')!.matches(':popover-open'), 'Composing Escape outside the manual popup must not close it.');
+  button('motion').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check(!document.getElementById('species-panel')!.matches(':popover-open') && document.activeElement === lastMenu, 'Escape outside the manual popup must close it and restore trigger focus.');
   lastMenu.click();
   (lastMenu.closest('.project-group')!.querySelector('.project-toggle') as HTMLButtonElement).click();
   check(!document.getElementById('species-panel')!.matches(':popover-open'), 'Collapsing the owner project must close picker.');
   (lastMenu.closest('.project-group')!.querySelector('.project-toggle') as HTMLButtonElement).click();
   document.querySelector('main')!.scrollTop = 0;
 
-  button('motion').click();
+  if (!document.body.classList.contains('paused')) button('motion').click();
   check(document.body.classList.contains('paused'), 'Pause must stop motion.');
   check(document.getAnimations().every((animation: Animation): boolean => animation.playState !== 'running'), 'Pause must stop sprite and CSS animations.');
   const pikachu: Pokemon = POKEMON.find((species: Pokemon): boolean => species.id === 25)!;
@@ -207,7 +347,7 @@ export async function run(): Promise<string[]> {
       check(badgeStyle.borderTopColor === 'rgb(217, 119, 6)' && badgeStyle.animationName === 'none', 'Paused working loader must retain its orange indicator without motion.');
     }
     const sprite: HTMLElement = firstCard().querySelector('.sprite')!;
-    const sheet: SpriteAnimation = pikachu.animations[state === 'done' ? 'sleep' : 'walk'];
+    const sheet: SpriteAnimation = state === 'done' ? pikachu.animations.sleep : pikachu.animations.shock!;
     const image: HTMLImageElement = new Image();
     image.src = new URL(sheet.path, new URL('../panel/sprites.ts', import.meta.url)).href;
     await image.decode();
@@ -227,10 +367,12 @@ export async function run(): Promise<string[]> {
     const spriteBounds: DOMRect = sprite.getBoundingClientRect();
     const groundBounds: DOMRect = firstCard().querySelector('.ground')!.getBoundingClientRect();
     const visibleBottom: number = spriteBounds.bottom - (sheet.height - 1 - lastOpaqueRow) * spriteBounds.height / sheet.height;
-    check(Math.abs(visibleBottom - (groundBounds.top + groundBounds.height / 2)) <= 1, `${state} Pikachu must touch the grass at the lowest animation frame, including while motion is paused.`);
+    const groundLevel: number = groundBounds.top + groundBounds.height / 2;
+    const clearance: number = state === 'working' ? 2 * (sheet.scale ?? pikachu.scale) + 1 : 1;
+    check(visibleBottom <= groundLevel + 1 && groundLevel - visibleBottom <= clearance, `${state} Pikachu must stay above the grass with only source-frame clearance, including while motion is paused.`);
   }
   passed.push('sleeping and working Pikachu touch grass with state-specific grounding');
-  button('motion').click();
+  if (!reduceMotion) button('motion').click();
   passed.push('pause and resume all motion');
 
   const request: typeof orca.plugin.request = orca.plugin.request;
@@ -278,18 +420,19 @@ export async function run(): Promise<string[]> {
   passed.push('failed roster remains stale during live events');
 
   const call: typeof orca.host.call = orca.host.call;
-  let resolveChoice: ((value: unknown) => void) | undefined;
+  const resolveChoices: Map<string, (value: unknown) => void> = new Map();
   orca.host.call = async (method: string, params: unknown): Promise<unknown> => {
-    if (method === 'storage.get' && (params as { key: string }).key.startsWith('pokemon.v1:')) return new Promise<unknown>((resolve): void => { resolveChoice = resolve; });
+    const key: string = (params as { key: string }).key;
+    if (method === 'storage.get' && key.startsWith('pokemon.v1:')) return new Promise<unknown>((resolve): void => { resolveChoices.set(key, resolve); });
     return call(method, params);
   };
   fixture.agents.push({ ...fixture.agents[0], id: 'late-choice', paneKey: 'tab:late' });
   await refresh();
-  await until((): boolean => resolveChoice !== undefined);
+  await until((): boolean => resolveChoices.size === 2);
   const removed: HTMLElement = document.querySelector('.agent-card:last-child .sprite')!;
   fixture.agents.pop();
   await refresh();
-  resolveChoice!({ value: 25 });
+  for (const [key, resolveChoice] of resolveChoices) resolveChoice({ value: key.endsWith('.work') ? 'shock' : 25 });
   await new Promise<number>(requestAnimationFrame);
   check(!removed.isConnected && removed.getAnimations().length === 0, 'Removed sprite must not restart after late storage read.');
   orca.host.call = call;

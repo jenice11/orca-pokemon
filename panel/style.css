@@ -45,7 +45,18 @@ main { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; paddi
 .species-control .pokeball::after { content: ''; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; border: 1px solid #20232a; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); }
 .species-control:focus-within { outline: 2px solid var(--orca-ring, #a6d8ad); outline-offset: 2px; }
 .species-picker { padding: 0; cursor: pointer; }
-#species-panel { position: fixed; inset: auto; margin: 0; box-sizing: border-box; padding: 8px; border: 1px solid var(--orca-border, #363a43); border-radius: 7px; background: var(--orca-background, #191c22); color: var(--orca-foreground, #e8e8ed); box-shadow: 0 6px 24px #0006; overflow: hidden; }
+#species-panel { position: fixed; inset: auto; margin: 0; box-sizing: border-box; padding: 10px; border: 3px double #7c8596; border-radius: 4px; background: #20232a; color: #e8e8ed; font-family: ui-monospace, monospace; box-shadow: 3px 3px 0 #0007; overflow: auto; }
+#battle-prompt, #battle-work-label { display: block; margin: 0 0 12px; font-size: 12px; line-height: 1.5; }
+.battle-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.battle-actions button, .work-animation button { position: relative; min-width: 0; border: 2px solid #7c8596; border-radius: 2px; background: #292e38; color: #e8e8ed; font: bold 12px ui-monospace, monospace; padding: 8px 4px 8px 20px; text-align: left; }
+.battle-actions button:focus, .work-animation button:focus { outline: 2px solid #e8e8ed; outline-offset: 2px; }
+.battle-actions button:focus::before, .work-animation button:focus::before { content: "▶"; position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 12px; }
+#species-panel { color-scheme: dark; }
+#species-panel input, #species-panel select, #species-results button, #species-panel .work-animation button { background: #292e38; color: #e8e8ed; }
+#species-panel button:hover { background: #3b4352; }
+#species-panel :focus-visible { outline-color: #e8e8ed; }
+#battle-save-status { margin: 6px 0 0; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+#battle-save-status:empty { margin: 0; }
 #species-panel:popover-open { display: flex; flex-direction: column; gap: 6px; }
 #species-search { width: 100%; min-height: 28px; box-sizing: border-box; font: inherit; font-size: 12px; padding: 5px; background: var(--orca-secondary, #242730); color: inherit; border: 1px solid var(--orca-border, #363a43); border-radius: 4px; }
 #species-results { min-height: 0; max-height: 180px; overflow-y: auto; }
@@ -82,10 +93,17 @@ main { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; paddi
 .ground { position: absolute; left: 12px; right: 12px; bottom: 9px; height: 11px; border-radius: 50%; background: radial-gradient(ellipse at center, #78ad5866 0%, #4e843e44 45%, #355e301a 70%, transparent 100%); }
 .actor { position: absolute; left: 50%; bottom: 14px; width: 90px; height: 50px; margin-left: -45px; display: flex; align-items: flex-end; justify-content: center; }
 .sprite { flex-shrink: 0; image-rendering: pixelated; background-repeat: no-repeat; }
+.work-animation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+#species-panel .work-animation button[aria-pressed="true"] { background: #455a50; color: #f1fff5; border-color: #a6d8ad; }
 .signal { position: absolute; top: 7px; left: calc(50% + 35px); font: bold 14px ui-monospace, monospace; color: var(--orca-muted-foreground, #acb0bb); }
+.selection-hop { animation: selection-hop .3s steps(4) !important; }
+@keyframes selection-hop { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
+.paused .selection-hop { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .selection-hop { animation: none !important; } }
 [data-state="blocked"] .signal { color: var(--orca-destructive, #ff9595); }
 [data-state="working"] .actor { animation: patrol 5s ease-in-out infinite alternate; }
-[data-state="blocked"] .actor { animation: attention 1.8s ease-in-out infinite; }
+[data-state="working"] .actor:has(.sprite[data-turning="true"]) { animation: none; }
+[data-state="working"] .actor:has(.sprite[data-tumbling="true"]) { animation: none; }
 [data-state="waiting"] .actor { animation: breathe 3s ease-in-out infinite; }
 [data-state="unknown"] .sprite { filter: grayscale(1); }
 .paused .actor { animation: none !important; }
@@ -98,7 +116,6 @@ select { min-width: 0; max-width: 70%; font-size: 11px; padding: 5px 7px; }
 footer { margin: 0 16px; border-top: 1px solid var(--orca-border, #363a43); padding: 10px 2px 18px; font-size: 10px; color: var(--orca-muted-foreground, #acb0bb); }
 summary { cursor: pointer; }
 @keyframes patrol { from { transform: translateX(-35px); } to { transform: translateX(35px); } }
-@keyframes attention { 0%, 80%, 100% { transform: translateY(0); } 88% { transform: translateY(-7px); } 94% { transform: translateY(-3px); } }
 @keyframes breathe { 50% { transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { .actor { animation: none !important; } }
 @media (max-width: 270px) { main { padding: 10px; } }

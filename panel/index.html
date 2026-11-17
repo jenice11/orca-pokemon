@@ -31,13 +31,24 @@
           </dialog>
           <p id="audio-preference-status" role="status"></p>
         </div>
-        <details><summary>About &amp; credits</summary><p>17 bundled Pokémon. Live terminal agents on this Orca host and its reachable SSH hosts; not structured chats or paired servers. Refresh after an agent exits.</p><p>Inspired by mathieucroset/herdr-pokemon-agents (MIT). Sprite art: PMDCollab / SpriteCollab contributors, CC BY-NC 4.0. Full artist credits and source links: ATTRIBUTION.md in this plugin.</p><p>Noncommercial fan project. Pokémon © Nintendo, Creatures, GAME FREAK. Not affiliated or endorsed.</p></details>
+        <details><summary>About &amp; credits</summary><p>22 bundled Pokémon. Live terminal agents on this Orca host and its reachable SSH hosts; not structured chats or paired servers. Refresh after an agent exits.</p><p>Inspired by mathieucroset/herdr-pokemon-agents (MIT). Sprite art: PMDCollab / SpriteCollab contributors, CC BY-NC 4.0. Full artist credits and source links: ATTRIBUTION.md in this plugin.</p><p>Noncommercial fan project. Pokémon © Nintendo, Creatures, GAME FREAK. Not affiliated or endorsed.</p></details>
       </footer>
     </main>
-    <div id="species-panel" popover="manual" role="dialog" aria-label="Choose Pokémon">
+    <div id="species-panel" popover="manual" role="dialog" aria-label="Pokémon battle menu">
+      <div id="battle-menu">
+        <p id="battle-prompt"></p>
+        <div class="battle-actions">
+          <button id="battle-fight" type="button">Work</button>
+          <button id="battle-pokemon" type="button">Pokémon</button>
+        </div>
+      </div>
+      <div id="battle-work" hidden><label id="battle-work-label">Work animation</label><div id="battle-work-control"></div></div>
+      <div id="battle-species" hidden>
       <input id="species-search" type="search" role="combobox" aria-label="Search Pokémon" aria-autocomplete="list" aria-expanded="true" aria-controls="species-results" placeholder="Search Pokémon…" autocomplete="off" />
       <div id="species-results" role="listbox" aria-label="Pokémon species"></div>
       <p id="species-empty" role="status" hidden>No Pokémon found.</p>
+      </div>
+      <p id="battle-save-status" role="status" aria-live="polite" aria-atomic="true"></p>
     </div>
     <section id="audio-card" class="audio-card" aria-labelledby="audio-title" hidden>
         <div class="audio-heading"><h2 id="audio-title">Spotify</h2><span class="audio-local">Desktop</span></div>

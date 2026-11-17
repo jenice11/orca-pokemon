@@ -4,10 +4,10 @@ A Pokémon companion panel for [Orca](https://www.onorca.dev/). Each live termin
 
 ## Features
 
-- **Live status animations:** walking while working, an attention hop when blocked, idle breathing while waiting, and sleeping when done.
+- **Live status animations:** walking while working (Pikachu uses 4× slower Shock, turning in place once through each of eight directions), an attention hop when blocked, idle breathing while waiting, and sleeping when done.
 - **Click-to-focus:** switches to the exact agent terminal using a freshly resolved Orca terminal handle.
-- **Saved species choices:** 17 Pokémon, with choices stored per workspace and pane identity.
-- **Offline sprites:** 51 bundled animation sheets; no runtime downloads, telemetry, or external requests.
+- **Saved species choices:** 22 Pokémon, with choices stored per workspace and pane identity.
+- **Offline sprites:** 69 bundled animation sheets; no runtime downloads, telemetry, or external requests.
 - **Accessible controls:** keyboard navigation, status labels, a motion toggle, and support for reduced-motion preferences.
 - **Spotify visualizer:** an optional spectrum display driven by Spotify desktop playback on supported Macs, with remembered explicit permission.
 
@@ -58,10 +58,12 @@ orca plugin dev unload . --json
 
 1. Start an agent in an Orca terminal and open **Pokémon Agents** in the right sidebar.
 2. Click its Pokémon, or use Tab and Enter, to focus the terminal.
-3. Click the Poké Ball in the sprite area's lower-left corner to search Pokémon names (case-insensitive). The current species is marked. Use Arrow Up/Down and Enter to choose, or Escape to close. Choosing saves immediately, updates the sprite, closes the picker, and returns focus to the Poké Ball. Right-clicking the Pokémon also opens search. Failed saves keep the previous species, show an error, and leave search usable. Clicking outside dismisses without taking focus.
+3. Click the Poké Ball in the sprite area's lower-left corner, then choose Pokémon to search names (case-insensitive). The current species is marked. Use Arrow Up/Down and Enter to choose, or Escape to close. Choosing saves immediately, updates the sprite, closes the picker, and returns focus to the Poké Ball. Right-clicking the Pokémon opens search directly. Failed saves keep the previous species, show an error, and leave search usable. Clicking outside dismisses without taking focus.
 4. Use **Pause** to stop animations, or **Refresh** to reconcile the roster and refresh permitted Spotify capture.
 
-Available species: Bulbasaur, Charmander, Squirtle, Pikachu, Jigglypuff, Meowth, Psyduck, Gengar, Cubone, Eevee, Snorlax, Dragonite, Mew, Suicune, Piplup, Sylveon, and Yamper.
+Available species: Bulbasaur, Charmander, Squirtle, Pikachu, Jigglypuff, Meowth, Psyduck, Gengar, Cubone, Eevee, Snorlax, Dragonite, Mew, Pichu, Togepi, Suicune, Piplup, Sylveon, Rowlet, Mimikyu, Scorbunny, and Yamper.
+
+The Poké Ball opens a battle-style popup. Choose **Pokémon** to search species, or **Work** to choose Pikachu's Walk/Shock/Tumble work animation. Work is currently available for Pikachu only. Arrow keys move the cursor; Enter chooses an option. Escape closes the popup. A successful choice saves and closes the popup; failures keep it open for retry. Tumble plays left to right, then TumbleBack plays right to left, looping every 3.6 seconds. The work animation choice saves per agent; Shock remains the default. Other Pokémon keep their existing walking animation.
 
 ## Arrange agents
 
@@ -126,7 +128,7 @@ npm run verify
 npm run test:browser
 ```
 
-The browser command starts its own loopback fixture server on an available port and closes it afterward. It runs the main, ordering, project, audio, and consent suites at 260, 320, and 480 px. Reload checks preserve their scenario's storage; other cases use fresh browser storage and a mock Orca bridge. Tests do not change live plugin settings.
+The browser command starts its own loopback fixture server on an available port and closes it afterward. It runs the main, ordering, project, audio, and consent suites at 260, 320, and 480 px. The main suite also runs with reduced motion. Reload checks preserve their scenario's storage; other cases use fresh browser storage and a mock Orca bridge. Tests do not change live plugin settings.
 
 ## Credits and asset rights
 
