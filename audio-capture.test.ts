@@ -75,6 +75,24 @@ test('explicit start is single-flight, streams validated frames, and stop closes
   capture.dispose();
 });
 
+test('repeated stop and teardown preserve the first forced-kill deadline', async (context: TestContext): Promise<void> => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const capture: AudioCapture = new AudioCapture((): void => {}, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+  capture.start(session);
+  capture.stop(session);
+  context.mock.timers.tick(600);
+  capture.stop(session);
+  capture.heartbeat(session);
+  const closed: Promise<void> = capture.dispose();
+  context.mock.timers.tick(399);
+  assert.deepEqual(fixture.signals, ['SIGTERM']);
+  context.mock.timers.tick(1);
+  assert.deepEqual(fixture.signals, ['SIGTERM', 'SIGKILL']);
+  fixture.child.emit('close', 0);
+  await closed;
+});
+
 test('ready capture with silent frames never claims Spotify playback', (context: TestContext): void => {
   context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
   const fixture: ReturnType<typeof childFixture> = childFixture();
@@ -252,6 +270,219 @@ test('a rejected post from an old capture cannot stop a newer capture', async ()
   assert.equal(capture.status().state, 'starting');
   assert.deepEqual(second.signals, []);
   void capture.dispose(true);
+});
+
+test('stalled posts stop capture despite continuing frames and heartbeats', async (context: TestContext): Promise<void> => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
+  for (const stalledEvent of ['audio.frame', 'audio.status'] as const) {
+    const fixture: ReturnType<typeof childFixture> = childFixture();
+    let framePosts: number = 0;
+    let releasePost: (() => void) | undefined;
+    const capture: AudioCapture = new AudioCapture((event): void | Promise<void> => {
+      if (event === 'audio.frame') framePosts++;
+      if (event === stalledEvent) return new Promise<void>((resolve): void => { releasePost = resolve; });
+    }, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+    try {
+      capture.start(session);
+      fixture.child.stdout.emit('data', '{"type":"ready"}\n');
+      fixture.child.stdout.emit('data', JSON.stringify({ type: 'frame', ...frame }) + '\n');
+      for (let second: number = 0; second < 4; second++) {
+        context.mock.timers.tick(1000);
+        capture.heartbeat(session);
+        fixture.child.stdout.emit('data', JSON.stringify({ type: 'frame', ...frame }) + '\n');
+      }
+      assert.equal(capture.status().state, 'listening');
+      if (stalledEvent === 'audio.frame') assert.equal(framePosts, 1, 'Only one frame publication may remain pending.');
+      context.mock.timers.tick(1000);
+      assert.equal(capture.status().state, 'error', 'Delivery must have its own deadline, independent of heartbeats.');
+      assert.deepEqual(fixture.signals, ['SIGTERM']);
+      releasePost!();
+      await Promise.resolve();
+      context.mock.timers.tick(1000);
+      assert.deepEqual(fixture.signals, ['SIGTERM', 'SIGKILL']);
+    } finally { await capture.dispose(true); }
+  }
+});
+
+test('frame delivery completion permits the next frame without leaving a timeout', async (context: TestContext): Promise<void> => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  let framePosts: number = 0;
+  let releasePost: (() => void) | undefined;
+  const capture: AudioCapture = new AudioCapture((event): void | Promise<void> => {
+    if (event !== 'audio.frame') return;
+    framePosts++;
+    if (framePosts === 1) return new Promise<void>((resolve): void => { releasePost = resolve; });
+  }, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+  try {
+    capture.start(session);
+    fixture.child.stdout.emit('data', '{"type":"ready"}\n');
+    fixture.child.stdout.emit('data', JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    releasePost!();
+    await Promise.resolve();
+    for (let second: number = 0; second < 6; second++) {
+      context.mock.timers.tick(1000);
+      capture.heartbeat(session);
+      fixture.child.stdout.emit('data', JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    }
+    assert.equal(framePosts, 7);
+    assert.equal(capture.status().state, 'listening');
+    assert.deepEqual(fixture.signals, []);
+  } finally { await capture.dispose(true); }
+});
+
+test('shutdown status waits for post capacity and publishes when delivery resumes', async (): Promise<void> => {
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const deliveries: (() => void)[] = [];
+  const events: (AudioStatus | AudioFrame)[] = [];
+  const capture: AudioCapture = new AudioCapture((event, payload): Promise<void> => {
+    events.push(payload);
+    return new Promise<void>((resolve): void => { deliveries.push(resolve); });
+  }, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+  try {
+    capture.start(session);
+    fixture.child.stdout.emit('data', '{"type":"ready"}\n' + JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    capture.stop(session);
+    fixture.child.emit('close', 0);
+    assert.equal(events.length, 4, 'Shutdown must not exceed the unresolved post limit.');
+    assert.equal(capture.status().state, 'off', 'Healthy delayed posts must not turn shutdown into an error.');
+    deliveries[0]();
+    await Promise.resolve();
+    assert.equal(events.length, 5);
+    assert.deepEqual(events[4], capture.status(), 'Capacity must deliver the sessionless shutdown status.');
+    for (const deliver of deliveries.slice(1)) deliver();
+    await Promise.resolve();
+    assert.equal(events.length, 5, 'Each final status must publish only once.');
+  } finally { await capture.dispose(true); }
+});
+
+test('deferred shutdown status cannot publish after a new start or disposal', async (): Promise<void> => {
+  for (const action of ['start', 'dispose'] as const) {
+    const fixture: ReturnType<typeof childFixture> = childFixture();
+    const deliveries: (() => void)[] = [];
+    const capture: AudioCapture = new AudioCapture((): Promise<void> =>
+      new Promise<void>((resolve): void => { deliveries.push(resolve); }),
+    (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+    try {
+      capture.start(session);
+      fixture.child.stdout.emit('data', '{"type":"ready"}\n' + JSON.stringify({ type: 'frame', ...frame }) + '\n');
+      capture.stop(session);
+      fixture.child.emit('close', 0);
+      if (action === 'start') assert.equal(capture.start(session).state, 'error');
+      else await capture.dispose(true);
+      for (const deliver of deliveries) deliver();
+      await Promise.resolve();
+      assert.equal(deliveries.length, 4, 'An obsolete deferred status must not publish.');
+    } finally { await capture.dispose(true); }
+  }
+});
+
+test('deferred helper errors retain their diagnostic when a rejected post releases capacity', async (): Promise<void> => {
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const deliveries: { resolve(): void; reject(reason: Error): void }[] = [];
+  const events: (AudioStatus | AudioFrame)[] = [];
+  const capture: AudioCapture = new AudioCapture((event, payload): Promise<void> => {
+    events.push(payload);
+    return new Promise<void>((resolve, reject): void => { deliveries.push({ resolve, reject }); });
+  }, (): ChildProcessWithoutNullStreams => fixture.child, 'darwin');
+  try {
+    capture.start(session);
+    fixture.child.stdout.emit('data', '{"type":"ready"}\n' + JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    fixture.child.stdout.emit('data', '{"type":"error","message":"Spotify permission denied."}\n');
+    fixture.child.emit('close', 1);
+    assert.equal(events.length, 4);
+    deliveries[0].reject(new Error('Old starting post rejected'));
+    await Promise.resolve();
+    assert.deepEqual(events[4], { state: 'error', session: null, message: 'Spotify permission denied.' });
+    for (const delivery of deliveries.slice(1)) delivery.resolve();
+    await Promise.resolve();
+    assert.equal(events.length, 5);
+  } finally { await capture.dispose(true); }
+});
+
+test('deferred helper errors survive current-generation rejection before helper close', async (): Promise<void> => {
+  const children: ReturnType<typeof childFixture>[] = [childFixture(), childFixture()];
+  const deliveries: { resolve(): void; reject(reason: Error): void }[] = [];
+  const events: (AudioStatus | AudioFrame)[] = [];
+  let launches: number = 0;
+  const capture: AudioCapture = new AudioCapture((event, payload): Promise<void> => {
+    events.push(payload);
+    return new Promise<void>((resolve, reject): void => { deliveries.push({ resolve, reject }); });
+  }, (): ChildProcessWithoutNullStreams => children[launches++].child, 'darwin');
+  try {
+    capture.start(session);
+    capture.stop(session);
+    children[0].child.emit('close', 0);
+    deliveries[1].resolve();
+    deliveries[2].resolve();
+    await Promise.resolve();
+    assert.equal(capture.start(session).state, 'starting');
+    children[1].child.stdout.emit('data', '{"type":"ready"}\n' + JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    children[1].child.stdout.emit('data', '{"type":"error","message":"Spotify permission denied."}\n');
+    assert.equal(events.length, 6, 'The error must wait while all four publication slots are occupied.');
+    deliveries[3].reject(new Error('Current starting post rejected'));
+    await Promise.resolve();
+    assert.deepEqual(events[6], { state: 'error', session, message: 'Spotify permission denied.' });
+    children[1].child.emit('close', 1);
+    deliveries[0].resolve();
+    await Promise.resolve();
+    assert.deepEqual(events[7], { state: 'error', session: null, message: 'Spotify permission denied.' });
+    for (const delivery of deliveries.slice(4)) delivery.resolve();
+    await Promise.resolve();
+    assert.equal(events.length, 8, 'Old posts must only release capacity, never replay old status.');
+  } finally { await capture.dispose(true); }
+});
+
+test('unresolved posts remain bounded across capture restarts', async (context: TestContext): Promise<void> => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const children: ReturnType<typeof childFixture>[] = [childFixture(), childFixture()];
+  let launches: number = 0;
+  let posts: number = 0;
+  const capture: AudioCapture = new AudioCapture((): Promise<void> => {
+    posts++;
+    return new Promise<void>((): void => {});
+  }, (): ChildProcessWithoutNullStreams => children[launches++].child, 'darwin');
+  try {
+    capture.start(session);
+    capture.stop(session);
+    children[0].child.emit('close', 0);
+    capture.start(session);
+    capture.stop(session);
+    children[1].child.emit('close', 0);
+    assert.equal(capture.start(session).state, 'error');
+    assert.equal(launches, 2, 'An exhausted bridge must fail before launching another helper.');
+    assert.equal(posts, 4, 'Unresolved publications must not accumulate across restarts.');
+  } finally { await capture.dispose(true); }
+});
+
+test('an old frame completion cannot release a newer pending frame', async (context: TestContext): Promise<void> => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
+  const children: ReturnType<typeof childFixture>[] = [childFixture(), childFixture()];
+  const deliveries: (() => void)[] = [];
+  let launches: number = 0;
+  const capture: AudioCapture = new AudioCapture((event): void | Promise<void> => {
+    if (event === 'audio.frame') return new Promise<void>((resolve): void => { deliveries.push(resolve); });
+  }, (): ChildProcessWithoutNullStreams => children[launches++].child, 'darwin');
+  try {
+    capture.start(session);
+    children[0].child.stdout.emit('data', '{"type":"ready"}\n' + JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    capture.stop(session);
+    children[0].child.emit('close', 0);
+    capture.start(session);
+    children[1].child.stdout.emit('data', '{"type":"ready"}\n' + JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    assert.equal(deliveries.length, 2);
+    deliveries[0]();
+    await Promise.resolve();
+    context.mock.timers.tick(110);
+    children[1].child.stdout.emit('data', JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    assert.equal(deliveries.length, 2, 'Old completion must leave the newer frame pending.');
+    deliveries[1]();
+    await Promise.resolve();
+    context.mock.timers.tick(110);
+    children[1].child.stdout.emit('data', JSON.stringify({ type: 'frame', ...frame }) + '\n');
+    assert.equal(deliveries.length, 3);
+    assert.equal(capture.status().state, 'listening');
+  } finally { await capture.dispose(true); }
 });
 
 test('deactivation waits for shutdown and preserves forced termination', async (context: TestContext): Promise<void> => {

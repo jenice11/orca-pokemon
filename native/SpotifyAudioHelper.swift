@@ -60,54 +60,60 @@ private final class Analyzer {
 
     deinit { vDSP_destroy_fftsetup(setup) }
 
-    func analyze(_ samples: [Float], sampleRate: Double) -> Spectrum {
+    func analyze(_ channels: [[Float]], sampleRate: Double) -> Spectrum {
         var energy: Double = 0
-        for index: Int in 0..<sampleCount {
-            let value: Float = samples[index].isFinite ? samples[index] : 0
-            energy += Double(value) * Double(value)
-            real[index] = value * window[index]
-            imaginary[index] = 0
-        }
         var bands: [Float] = [Float](repeating: 0, count: bandCount)
-        guard energy > 0, sampleRate.isFinite, sampleRate > 90 else {
+        guard !channels.isEmpty, sampleRate.isFinite, sampleRate > 90 else {
             return Spectrum(bands: bands, level: 0)
-        }
-        real.withUnsafeMutableBufferPointer { (realBuffer: inout UnsafeMutableBufferPointer<Float>) in
-            imaginary.withUnsafeMutableBufferPointer { (imaginaryBuffer: inout UnsafeMutableBufferPointer<Float>) in
-                var split: DSPSplitComplex = DSPSplitComplex(realp: realBuffer.baseAddress!, imagp: imaginaryBuffer.baseAddress!)
-                vDSP_fft_zip(setup, &split, 1, 11, FFTDirection(FFT_FORWARD))
-            }
         }
         let upper: Double = min(16_000, sampleRate / 2)
         let ratio: Double = upper / 45
-        for bin: Int in 1..<(sampleCount / 2) {
-            let frequency: Double = Double(bin) * sampleRate / Double(sampleCount)
-            guard frequency >= 45, frequency < upper else { continue }
-            let band: Int = min(bandCount - 1, Int(log(frequency / 45) / log(ratio) * Double(bandCount)))
-            let amplitude: Float = hypot(real[bin], imaginary[bin]) * 4 / Float(sampleCount)
-            bands[band] = max(bands[band], visualLevel(amplitude))
+        for samples: [Float] in channels {
+            var channelEnergy: Double = 0
+            for index: Int in 0..<sampleCount {
+                let value: Float = samples[index].isFinite ? samples[index] : 0
+                channelEnergy += Double(value) * Double(value)
+                real[index] = value * window[index]
+                imaginary[index] = 0
+            }
+            energy += channelEnergy
+            guard channelEnergy > 0 else { continue }
+            real.withUnsafeMutableBufferPointer { (realBuffer: inout UnsafeMutableBufferPointer<Float>) in
+                imaginary.withUnsafeMutableBufferPointer { (imaginaryBuffer: inout UnsafeMutableBufferPointer<Float>) in
+                    var split: DSPSplitComplex = DSPSplitComplex(realp: realBuffer.baseAddress!, imagp: imaginaryBuffer.baseAddress!)
+                    vDSP_fft_zip(setup, &split, 1, 11, FFTDirection(FFT_FORWARD))
+                }
+            }
+            for bin: Int in 1..<(sampleCount / 2) {
+                let frequency: Double = Double(bin) * sampleRate / Double(sampleCount)
+                guard frequency >= 45, frequency < upper else { continue }
+                let band: Int = min(bandCount - 1, Int(log(frequency / 45) / log(ratio) * Double(bandCount)))
+                let amplitude: Float = hypot(real[bin], imaginary[bin]) * 4 / Float(sampleCount)
+                bands[band] = max(bands[band], visualLevel(amplitude))
+            }
         }
-        return Spectrum(bands: bands, level: normalized(Float(sqrt(energy / Double(sampleCount)))))
+        return Spectrum(bands: bands, level: normalized(Float(sqrt(energy / Double(sampleCount * channels.count)))))
     }
 }
 
 // Fixed storage; callback uses try-lock and drops samples rather than blocking audio.
 private final class SampleBuffer: @unchecked Sendable {
     private let lock: NSLock = NSLock()
-    private let storage: UnsafeMutablePointer<Float> = .allocate(capacity: sampleCount)
+    private let storage: UnsafeMutablePointer<Float> = .allocate(capacity: sampleCount * 2)
+    private var channelCount: Int = 1
     private var cursor: Int = 0
     private var available: Int = 0
     private var updated: Bool = false
     private var invalid: Bool = false
 
-    init() { storage.initialize(repeating: 0, count: sampleCount) }
-    deinit { storage.deinitialize(count: sampleCount); storage.deallocate() }
+    init() { storage.initialize(repeating: 0, count: sampleCount * 2) }
+    deinit { storage.deinitialize(count: sampleCount * 2); storage.deallocate() }
 
     func append(_ input: UnsafePointer<AudioBufferList>, channels: Int, interleaved: Bool) {
         guard lock.try() else { return }
         defer { lock.unlock() }
         let buffers: UnsafeMutableAudioBufferListPointer = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
-        guard channels > 0, buffers.count == (interleaved ? 1 : channels) else { invalid = true; return }
+        guard channels > 0, channels <= 2, buffers.count == (interleaved ? 1 : channels) else { invalid = true; return }
         var frames: Int = Int.max
         for buffer: AudioBuffer in buffers {
             let expectedChannels: Int = interleaved ? channels : 1
@@ -118,29 +124,34 @@ private final class SampleBuffer: @unchecked Sendable {
             frames = min(frames, count)
         }
         guard frames > 0, frames != Int.max else { return }
+        if channelCount != channels {
+            channelCount = channels
+            cursor = 0
+            available = 0
+        }
         // Only the newest FFT window matters, even if the device sends a large block.
         for frame: Int in max(0, frames - sampleCount)..<frames {
-            var mono: Float = 0
             for channel: Int in 0..<channels {
                 let buffer: AudioBuffer = buffers[interleaved ? 0 : channel]
                 let data: UnsafePointer<Float> = UnsafePointer(buffer.mData!.assumingMemoryBound(to: Float.self))
                 let value: Float = data[interleaved ? frame * channels + channel : frame]
-                mono += (value.isFinite ? value : 0) / Float(channels)
+                storage[channel * sampleCount + cursor] = value.isFinite ? value : 0
             }
-            storage[cursor] = mono.isFinite ? mono : 0
             cursor = (cursor + 1) % sampleCount
             available = min(sampleCount, available + 1)
         }
         updated = true
     }
 
-    func snapshot() -> (samples: [Float], invalid: Bool) {
+    func snapshot() -> (samples: [[Float]], invalid: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        var samples: [Float] = [Float](repeating: 0, count: sampleCount)
+        var samples: [[Float]] = [[Float]](repeating: [Float](repeating: 0, count: sampleCount), count: channelCount)
         if updated {
-            for index: Int in 0..<available {
-                samples[sampleCount - available + index] = storage[(cursor - available + index + sampleCount) % sampleCount]
+            for channel: Int in 0..<channelCount {
+                for index: Int in 0..<available {
+                    samples[channel][sampleCount - available + index] = storage[channel * sampleCount + (cursor - available + index + sampleCount) % sampleCount]
+                }
             }
         } else {
             available = 0
@@ -156,7 +167,7 @@ private struct CaptureError: Error {
 
 private func requireSuccess(_ status: OSStatus, _ operation: String) throws {
     guard status == noErr else {
-        throw CaptureError(message: "\(operation) failed (CoreAudio \(status)). Check Screen & System Audio Recording permission for Spotify Audio Helper, then click Start again.")
+        throw CaptureError(message: "\(operation) failed (CoreAudio \(status)). Check Screen & System Audio Recording permission for Spotify Audio Helper, then click Refresh in the panel.")
     }
 }
 
@@ -230,7 +241,7 @@ private final class Capture: @unchecked Sendable {
             let now: UInt64 = DispatchTime.now().uptimeNanoseconds
             guard now - lastFrameTime >= 100_000_000 else { return }
             lastFrameTime = now
-            let snapshot: (samples: [Float], invalid: Bool) = buffer.snapshot()
+            let snapshot: (samples: [[Float]], invalid: Bool) = buffer.snapshot()
             guard !snapshot.invalid else { fail("Spotify delivered an unsupported audio buffer layout.") }
             let result: Spectrum = analyzer.analyze(snapshot.samples, sampleRate: sampleRate)
             if !emit(["type": "frame", "bands": result.bands, "level": result.level], dropIfBusy: true) { finish(0) }
@@ -283,19 +294,19 @@ private func selfTest() {
     }
     let analyzer: Analyzer = Analyzer()
     let silence: [Float] = [Float](repeating: 0, count: sampleCount)
-    let zero: Spectrum = analyzer.analyze(silence, sampleRate: 48_000)
+    let zero: Spectrum = analyzer.analyze([silence], sampleRate: 48_000)
     check(zero.level == 0 && zero.bands.allSatisfy { $0 == 0 }, "silence")
     var sine: [Float] = [Float](repeating: 0, count: sampleCount)
     let frequency: Double = 984.375
     for index: Int in 0..<sampleCount { sine[index] = Float(sin(2 * .pi * frequency * Double(index) / 48_000)) }
-    let spectrum: Spectrum = analyzer.analyze(sine, sampleRate: 48_000)
+    let spectrum: Spectrum = analyzer.analyze([sine], sampleRate: 48_000)
     let expected: Int = Int(log(frequency / 45) / log(16_000.0 / 45) * Double(bandCount))
     check(spectrum.bands[expected] == spectrum.bands.max() && spectrum.bands[expected] > 0.9, "sine peak")
     check(abs(spectrum.level - Float(1 / sqrt(2.0))) < 0.01, "RMS")
-    let alternateRate: Spectrum = analyzer.analyze(sine, sampleRate: 44_100)
+    let alternateRate: Spectrum = analyzer.analyze([sine], sampleRate: 44_100)
     let alternateBand: Int = Int(log((frequency * 44_100 / 48_000) / 45) / log(16_000.0 / 45) * Double(bandCount))
     check(alternateRate.bands[alternateBand] == alternateRate.bands.max(), "actual sample rate")
-    let nonfinite: Spectrum = analyzer.analyze([Float](repeating: .nan, count: sampleCount), sampleRate: 44_100)
+    let nonfinite: Spectrum = analyzer.analyze([[Float](repeating: .nan, count: sampleCount)], sampleRate: 44_100)
     check(nonfinite.level == 0 && nonfinite.bands.allSatisfy { $0 == 0 }, "nonfinite samples")
     check(normalized(.infinity) == 0 && normalized(-1) == 0 && normalized(2) == 1, "normalization")
     check(visualLevel(0) == 0 && visualLevel(.infinity) == 0 && visualLevel(0.01) > 0.4, "quiet audio uses a bounded decibel display")
@@ -308,9 +319,9 @@ private func selfTest() {
         var list: AudioBufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(bytes.count), mData: bytes.baseAddress))
         interleaved.append(&list, channels: 2, interleaved: true)
     }
-    let mixed: [Float] = interleaved.snapshot().samples
-    check(Array(mixed.suffix(3)) == [0.5, 0.5, -1], "interleaved stereo and nonfinite sanitization")
-    check(interleaved.snapshot().samples.allSatisfy { $0 == 0 }, "stale audio becomes silence")
+    let separated: [[Float]] = interleaved.snapshot().samples
+    check(Array(separated[0].suffix(3)) == [1, 0, -1] && Array(separated[1].suffix(3)) == [0, 1, -1], "interleaved stereo and nonfinite sanitization")
+    check(interleaved.snapshot().samples.allSatisfy { $0.allSatisfy { $0 == 0 } }, "stale audio becomes silence")
     let planar: SampleBuffer = SampleBuffer()
     let list: UnsafeMutableAudioBufferListPointer = AudioBufferList.allocate(maximumBuffers: 2)
     defer { free(list.unsafeMutablePointer) }
@@ -323,14 +334,47 @@ private func selfTest() {
             planar.append(UnsafePointer(list.unsafeMutablePointer), channels: 2, interleaved: false)
         }
     }
-    check(Array(planar.snapshot().samples.suffix(2)) == [0.5, 0], "noninterleaved stereo")
+    let planarSamples: [[Float]] = planar.snapshot().samples
+    check(Array(planarSamples[0].suffix(2)) == left && Array(planarSamples[1].suffix(2)) == right, "noninterleaved stereo")
+    let inverted: [Float] = sine.map { (value: Float) -> Float in -value }
+    for channels: [[Float]] in [[sine, inverted], [sine, silence], [silence, sine]] {
+        let expectedLevel: Float = channels[0] == silence || channels[1] == silence ? 0.5 : spectrum.level
+        for isInterleaved: Bool in [true, false] {
+            let stereoBuffer: SampleBuffer = SampleBuffer()
+            if isInterleaved {
+                stereo = [Float](repeating: 0, count: sampleCount * 2)
+                for index: Int in 0..<sampleCount {
+                    stereo[index * 2] = channels[0][index]
+                    stereo[index * 2 + 1] = channels[1][index]
+                }
+                stereo.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
+                    var list: AudioBufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(bytes.count), mData: bytes.baseAddress))
+                    stereoBuffer.append(&list, channels: 2, interleaved: true)
+                }
+            } else {
+                left = channels[0]
+                right = channels[1]
+                left.withUnsafeMutableBytes { (leftBytes: UnsafeMutableRawBufferPointer) in
+                    right.withUnsafeMutableBytes { (rightBytes: UnsafeMutableRawBufferPointer) in
+                        list[0] = AudioBuffer(mNumberChannels: 1, mDataByteSize: UInt32(leftBytes.count), mData: leftBytes.baseAddress)
+                        list[1] = AudioBuffer(mNumberChannels: 1, mDataByteSize: UInt32(rightBytes.count), mData: rightBytes.baseAddress)
+                        stereoBuffer.append(UnsafePointer(list.unsafeMutablePointer), channels: 2, interleaved: false)
+                    }
+                }
+            }
+            let result: Spectrum = analyzer.analyze(stereoBuffer.snapshot().samples, sampleRate: 48_000)
+            check(zip(result.bands, spectrum.bands).allSatisfy { abs($0 - $1) < 0.0001 }, "anti-phase and one-channel-silent stereo preserve spectrum, interleaved: \(isInterleaved)")
+            check(abs(result.level - expectedLevel) < 0.0001, "stereo RMS uses channel power, interleaved: \(isInterleaved)")
+        }
+    }
     let bounded: SampleBuffer = SampleBuffer()
     var large: [Float] = [Float](repeating: 0.25, count: sampleCount * 3)
     large.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
         var list: AudioBufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: 1, mDataByteSize: UInt32(bytes.count), mData: bytes.baseAddress))
         bounded.append(&list, channels: 1, interleaved: true)
     }
-    check(bounded.snapshot().samples.allSatisfy { $0 == 0.25 }, "oversized callbacks keep only latest window")
+    let boundedSamples: [[Float]] = bounded.snapshot().samples
+    check(boundedSamples.count == 1 && boundedSamples[0].allSatisfy { $0 == 0.25 }, "oversized callbacks keep only latest window")
     let malformed: SampleBuffer = SampleBuffer()
     var empty: AudioBufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: 7, mData: nil))
     malformed.append(&empty, channels: 2, interleaved: true)

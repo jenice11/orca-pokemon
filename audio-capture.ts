@@ -21,6 +21,9 @@ export class AudioCapture {
   private lastFrameAt: number = 0;
   private disposed: boolean = false;
   private generation: number = 0;
+  private framePostPending: boolean = false;
+  private terminalPostPending: boolean = false;
+  private readonly pendingPosts: Set<ReturnType<typeof setTimeout>> = new Set();
   private readonly publish: PublishAudio;
   private readonly launch: LaunchAudio;
   private readonly platform: NodeJS.Platform;
@@ -46,6 +49,8 @@ export class AudioCapture {
     }
     this.buffer = '';
     this.generation++;
+    this.terminalPostPending = false;
+    this.framePostPending = false;
     this.lastFrameAt = 0;
     this.current = { state: 'starting', message: 'Starting · approve system-audio access if macOS asks.', session };
     this.emit('audio.status', this.status());
@@ -85,7 +90,7 @@ export class AudioCapture {
   }
 
   heartbeat(session: string): AudioStatus {
-    if (!this.child || this.current.session !== session) return this.status();
+    if (!this.child || this.current.session !== session || (this.current.state !== 'starting' && this.current.state !== 'listening')) return this.status();
     clearTimeout(this.lease);
     this.lease = setTimeout((): void => { this.stop(session); }, 5000);
     this.lease.unref();
@@ -102,6 +107,7 @@ export class AudioCapture {
 
   dispose(force: boolean = false): Promise<void> {
     this.disposed = true;
+    this.terminalPostPending = false;
     this.generation++;
     const child: ChildProcessWithoutNullStreams | null = this.child;
     if (!child) { this.clearTimers(); return Promise.resolve(); }
@@ -163,6 +169,7 @@ export class AudioCapture {
   }
 
   private terminate(): void {
+    if (this.termination !== undefined) return;
     this.clearTimers();
     const child: ChildProcessWithoutNullStreams | null = this.child;
     if (!child) return;
@@ -177,19 +184,43 @@ export class AudioCapture {
     clearTimeout(this.startup);
     clearTimeout(this.silence);
     clearTimeout(this.termination);
+    this.termination = undefined;
+    for (const deadline of this.pendingPosts) clearTimeout(deadline);
+    this.framePostPending = false;
   }
 
   private emit(event: 'audio.status' | 'audio.frame', payload: AudioStatus | AudioFrame): void {
-    if (this.disposed) return;
+    if (this.disposed || (event === 'audio.frame' && this.framePostPending)) return;
     const generation: number = this.generation;
     const session: string | null = this.current.session;
     const failed: () => void = (): void => {
       if (this.disposed || generation !== this.generation || session !== this.current.session) return;
-      this.current = { state: 'error', session: this.child ? this.current.session : null, message: 'Panel connection lost. Capture stopped.' };
+      if (this.current.state !== 'error') this.current = { state: 'error', session: this.child ? this.current.session : null, message: 'Panel connection lost. Capture stopped. Reopen the panel; if this persists, reload the plugin.' };
       this.terminate();
     };
+    // Include old sessions in this cap until their bridge promises settle.
+    if (this.pendingPosts.size >= 4) {
+      if (event === 'audio.status' && (this.current.state === 'off' || this.current.state === 'error')) this.terminalPostPending = true;
+      else failed();
+      return;
+    }
     try {
-      void Promise.resolve(this.publish(event, payload)).catch(failed);
+      const publication: void | Promise<void> = this.publish(event, payload);
+      if (publication === undefined) return;
+      if (event === 'audio.frame') this.framePostPending = true;
+      const deadline: ReturnType<typeof setTimeout> = setTimeout(failed, 5000);
+      deadline.unref();
+      this.pendingPosts.add(deadline);
+      const delivered: () => void = (): void => {
+        clearTimeout(deadline);
+        this.pendingPosts.delete(deadline);
+        if (generation === this.generation && event === 'audio.frame') this.framePostPending = false;
+        if (this.terminalPostPending && !this.disposed) {
+          this.terminalPostPending = false;
+          this.emit('audio.status', this.status());
+        }
+      };
+      void publication.then(delivered, (): void => { failed(); delivered(); });
     } catch { failed(); }
   }
 }

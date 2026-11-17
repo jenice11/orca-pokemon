@@ -55,7 +55,8 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   let revision: number = 0;
   let paused: boolean = initiallyPaused;
   let disposed: boolean = false;
-  let heartbeatPending: boolean = false;
+  let heartbeatPending: symbol | null = null;
+  let captureIntent: boolean = false;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let staleFrame: ReturnType<typeof setTimeout> | undefined;
   let automaticStartPending: boolean = false;
@@ -90,6 +91,12 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     for (const bar of bars) bar.style.transform = 'scaleY(0)';
   }
 
+  function canHeartbeat(): boolean {
+    return captureIntent && initialized && preferenceVerified && savedAutoStart && !preferenceSaving &&
+      !disposed && !pageExited && !document.hidden && status.session === session &&
+      (status.state === 'starting' || status.state === 'listening');
+  }
+
   function paint(): void {
     paintPermission();
     const owner: boolean = status.session === session;
@@ -113,22 +120,23 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
       status.state === 'listening' && paused ? 'Capturing Spotify · display paused.' : status.message;
     label.dataset.state = status.state;
     if (status.state !== 'listening' || paused || !owner) flatten();
-    if (disposed || pageExited || !owner || document.hidden || !['starting', 'listening'].includes(status.state)) {
+    if (!canHeartbeat()) {
       clearInterval(heartbeat);
       heartbeat = undefined;
       return;
     }
     if (heartbeat !== undefined) return;
     heartbeat = setInterval((): void => {
-      if (heartbeatPending || disposed) return;
-      heartbeatPending = true;
+      if (heartbeatPending || !canHeartbeat()) return;
+      const requestToken: symbol = Symbol();
+      heartbeatPending = requestToken;
       const requestRevision: number = revision;
       void bridge.request('audio.heartbeat', { session }).then((result: unknown): void => {
         if (!disposed && revision === requestRevision) apply(result);
       }).catch((): void => {
         if (disposed || revision !== requestRevision) return;
         apply({ state: 'error', session, message: 'Audio connection lost. Capture expires within 5 seconds.' });
-      }).finally((): void => { heartbeatPending = false; });
+      }).finally((): void => { if (heartbeatPending === requestToken) heartbeatPending = null; });
     }, 1000);
   }
 
@@ -143,6 +151,8 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   }
 
   async function stop(): Promise<void> {
+    captureIntent = false;
+    heartbeatPending = null;
     captureRefresh = null;
     startupCancelled = true;
     automaticStartPending = false;
@@ -162,6 +172,8 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     if (disposed || pageExited || document.hidden || !initialized || !preferenceVerified || !savedAutoStart || preferenceSaving || (status.state !== 'off' && status.state !== 'error') || status.session !== null) return;
     automaticStartPending = false;
     startupCancelled = true;
+    captureIntent = true;
+    heartbeatPending = null;
     apply({ state: 'starting', session, message: 'Starting · approve system-audio access if macOS asks.' });
     const requestRevision: number = revision;
     try {
@@ -206,6 +218,8 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     paint();
   }
   function pageExit(): void {
+    captureIntent = false;
+    heartbeatPending = null;
     captureRefresh = null;
     pageExited = true;
     idleAnimation?.cancel();
@@ -356,7 +370,6 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
       if (key !== autoStartKey || disposed) return;
       captureRefresh = null;
       const version: number = ++preferenceVersion;
-      automaticStartPending = false;
       startupCancelled = true;
       if (!preferenceSaving) refreshPreference(version);
     },

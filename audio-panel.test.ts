@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test, type TestContext } from 'node:test';
 import { setupAudioVisualizer, type AudioBridge, type AudioVisualizer } from './panel/audio.ts';
 import type { AudioStatus } from './audio-protocol.ts';
+
+test('native permission and recovery text names existing panel controls', (): void => {
+  const source: string = readFileSync(new URL('./native/SpotifyAudioHelper.swift', import.meta.url), 'utf8');
+  const plist: string = readFileSync(new URL('./native/Info.plist', import.meta.url), 'utf8');
+  assert.doesNotMatch(source + plist, /\b(?:click|press) Start\b/i);
+  assert.match(source, /then click Refresh in the panel/);
+  assert.match(plist, /after you allow automatic capture in the panel/);
+});
 
 interface MockAnimation {
   playState: string;
@@ -58,6 +67,7 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
   let starts: number = 0;
   let failStart: boolean = false;
   let heartbeats: number = 0;
+  const pendingHeartbeats: ((error?: Error) => void)[] = [];
   let permission: unknown = initialPermission;
   let writes: number = 0;
   let delayNextStop: boolean = false;
@@ -69,6 +79,13 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
     async request(name: string, input?: unknown): Promise<unknown> {
       if (name === 'audio.heartbeat') {
         heartbeats++;
+        if (refreshScenario?.startsWith('pending-heartbeat') && heartbeats <= 2) {
+          const reply: AudioStatus = { ...status };
+          await new Promise<void>((resolve, reject): void => {
+            pendingHeartbeats.push((error?: Error): void => { if (error) reject(error); else resolve(); });
+          });
+          return reply;
+        }
       } else if (name === 'audio.start') {
         starts++;
         if (failStart) throw new Error('Capture permission denied');
@@ -176,6 +193,77 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
       await settle();
     }
     assert.equal(starts, 1, 'Saved consent must start even when a status event arrives during initialization.');
+    if (refreshScenario?.startsWith('pending-heartbeat')) {
+      context.mock.timers.tick(1000);
+      await settle();
+      assert.equal(heartbeats, 1);
+      visualizer.refresh();
+      await settle();
+      assert.equal(starts, 2);
+      context.mock.timers.tick(1000);
+      await settle();
+      assert.equal(heartbeats, 2, 'An old pending heartbeat must not block replacement capture.');
+      pendingHeartbeats[0](refreshScenario === 'pending-heartbeat-error' ? new Error('Old heartbeat failed') : undefined);
+      await settle();
+      assert.equal(elements.get('audio-status')!.dataset.state, 'listening', 'An old heartbeat reply must not replace current status.');
+      context.mock.timers.tick(1000);
+      await settle();
+      assert.equal(heartbeats, 2, 'Old completion must not clear the replacement heartbeat lock.');
+      pendingHeartbeats[1]();
+      await settle();
+      context.mock.timers.tick(1000);
+      await settle();
+      assert.equal(heartbeats, 3, 'Replacement heartbeats must continue after their own reply.');
+      return;
+    }
+    if (refreshScenario === 'heartbeat-consent' || refreshScenario === 'heartbeat-stop') {
+      const ownedStatus: AudioStatus = { ...status };
+      if (refreshScenario === 'heartbeat-consent') {
+        let resolveConsent: ((value: unknown) => void) | undefined;
+        readPermission = (): Promise<unknown> => new Promise<unknown>((resolve): void => { resolveConsent = resolve; });
+        visualizer.preferenceChanged('audio.autostart.v1');
+        listeners.get('audio.status')!(ownedStatus);
+        context.mock.timers.tick(1000);
+        await settle();
+        assert.equal(heartbeats, 0, 'Pending saved-consent verification must suspend heartbeats even after an owned status.');
+        resolveConsent!({ value: true });
+        readPermission = undefined;
+        await settle();
+        context.mock.timers.tick(1000);
+        await settle();
+        assert.equal(heartbeats, 1, 'Verified consent may resume heartbeats for capture that was not stopped.');
+        permission = false;
+        visualizer.preferenceChanged('audio.autostart.v1');
+        await settle();
+        listeners.get('audio.status')!(ownedStatus);
+        context.mock.timers.tick(1000);
+        await settle();
+        assert.equal(heartbeats, 1, 'Delayed listening must not renew revoked capture.');
+        permission = true;
+        visualizer.preferenceChanged('audio.autostart.v1');
+        await settle();
+        context.mock.timers.tick(1000);
+        await settle();
+        assert.equal(heartbeats, 1, 'Restored consent alone must not restore stopped capture intent.');
+      } else {
+        stopReturnsStopping = true;
+        visualizer.refresh();
+        await settle();
+        listeners.get('audio.status')!(ownedStatus);
+        context.mock.timers.tick(1000);
+        await settle();
+        assert.equal(heartbeats, 0, 'Delayed listening after Stop must not renew capture despite verified consent.');
+        stopReturnsStopping = false;
+        status = { state: 'off', session: null, message: 'Off' };
+        listeners.get('audio.status')!(status);
+        await settle();
+        assert.equal(starts, 2, 'Refresh must still restart after actual shutdown.');
+        context.mock.timers.tick(1000);
+        await settle();
+        assert.equal(heartbeats, 1, 'The refreshed capture must establish new heartbeat intent.');
+      }
+      return;
+    }
     if (refreshScenario) {
       stopReturnsStopping = true;
       visualizer.refresh();
@@ -400,8 +488,10 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
   }
 }
 
+test('pending heartbeats belong to their capture run', (context: TestContext): Promise<void> => verifyReopen(context, true, false, true, 'pending-heartbeat'));
+test('rejected old heartbeats cannot disturb replacement capture', (context: TestContext): Promise<void> => verifyReopen(context, true, false, true, 'pending-heartbeat-error'));
 test('remembered consent survives panel reopen', (context: TestContext): Promise<void> => verifyReopen(context, false));
-for (const scenario of ['restart', 'failure', 'revoke', 'verify', 'hide', 'dispose', 'peer']) {
+for (const scenario of ['restart', 'failure', 'revoke', 'verify', 'hide', 'dispose', 'peer', 'heartbeat-consent', 'heartbeat-stop']) {
   test(`manual capture refresh: ${scenario}`, (context: TestContext): Promise<void> => verifyReopen(context, true, false, true, scenario));
 }
 test('permission load failure after an early status event clears the loader', (context: TestContext): Promise<void> => verifyReopen(context, true, false, new Error('Storage unavailable')));

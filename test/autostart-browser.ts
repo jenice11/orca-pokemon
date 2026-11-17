@@ -112,3 +112,45 @@ export async function failedRead(): Promise<string[]> {
   check(starts() === 0 && !approved(), 'Unreadable preferences must fail closed.');
   return ['failed preference read never starts capture'];
 }
+
+export async function delayedNotification(): Promise<string[]> {
+  const call: typeof orca.host.call = orca.host.call;
+  const passed: string[] = [];
+  await until((): boolean => !entry().disabled);
+  for (const outcome of ['allow', 'revoke', 'error', 'exit'] as const) {
+    await call('storage.set', { key: 'audio.autostart.v1', value: false });
+    await until((): boolean => !approved() && !entry().disabled);
+    const reads: { resolve(value: unknown): void; reject(reason: Error): void }[] = [];
+    const before: number = starts();
+    orca.host.call = async (method: string, params: unknown): Promise<unknown> => {
+      if (method === 'storage.get' && (params as { key: string }).key === 'audio.autostart.v1') {
+        return new Promise<unknown>((resolve, reject): void => { reads.push({ resolve, reject }); });
+      }
+      return call(method, params);
+    };
+    try {
+      entry().click();
+      button('audio-allow').click();
+      await until((): boolean => reads.length === 1);
+      fixture.notifyStorage('audio.autostart.v1');
+      await until((): boolean => reads.length === 2);
+      if (outcome === 'allow') {
+        fixture.notifyStorage('audio.autostart.v1');
+        await until((): boolean => reads.length === 3);
+      }
+      check(starts() === before, 'A delayed notification must keep capture off until the latest verification completes.');
+      if (outcome === 'exit') window.dispatchEvent(new Event('pagehide'));
+      orca.host.call = call;
+      for (const read of reads.slice(0, -1)) read.resolve({ value: false });
+      await new Promise<number>(requestAnimationFrame);
+      check(starts() === before, 'Stale verification replies must not start capture.');
+      const latest: { resolve(value: unknown): void; reject(reason: Error): void } = reads[reads.length - 1];
+      if (outcome === 'error') latest.reject(new Error('Preference unavailable'));
+      else latest.resolve({ value: outcome !== 'revoke' });
+      await new Promise<number>(requestAnimationFrame);
+      check(starts() === before + (outcome === 'allow' ? 1 : 0), `Delayed notification must preserve Allow intent without defeating ${outcome}.`);
+      passed.push(`delayed notification: ${outcome}`);
+    } finally { orca.host.call = call; }
+  }
+  return passed;
+}

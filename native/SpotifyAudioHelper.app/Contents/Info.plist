@@ -9,5 +9,5 @@
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>LSUIElement</key><true/>
-  <key>NSAudioCaptureUsageDescription</key><string>Visualize Spotify playback after you click Start. Audio stays in memory and is never recorded or sent.</string>
+  <key>NSAudioCaptureUsageDescription</key><string>Visualize Spotify playback after you allow automatic capture in the panel. Capture can resume on future panel opens while permission remains enabled. Audio stays in memory and is never recorded or sent.</string>
 </dict></plist>
