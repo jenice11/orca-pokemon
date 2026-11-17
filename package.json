@@ -7,10 +7,12 @@
     "test": "node --test model.test.ts order.test.ts worker.test.ts cli.test.ts audio-capture.test.ts audio-theme.test.ts audio-panel.test.ts",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "verify": "npm run typecheck && npm test && python3 -m unittest tools/test_bundle_sprites.py && python3 tools/bundle-sprites.py --check",
-    "preview": "node tools/preview.ts"
+    "preview": "node tools/preview.ts",
+    "test:browser": "node tools/test-browser.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "playwright": "^1.65.1",
     "typescript": "^5.9.3"
   }
 }

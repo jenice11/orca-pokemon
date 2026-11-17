@@ -5,7 +5,10 @@ declare const fixture: {
   calls: { name?: string; method?: string; params?: { key: string } }[];
   emit(event: string, payload: unknown): void;
 };
-declare const orca: { host: { call(method: string, params: unknown): Promise<unknown> } };
+declare const orca: {
+  host: { call(method: string, params: unknown): Promise<unknown> };
+  plugin: { request(name: string, input?: unknown): Promise<unknown> };
+};
 
 const projectOrderKey: string = 'projects.order.v1';
 const cardOrderKey: string = 'cards.order.v1';
@@ -291,4 +294,36 @@ export async function verifyPartialReadFailure(): Promise<string> {
   check(same(after.get(failedKey), original), 'Moving one order must not overwrite a different order whose initial read failed.');
   check(document.getElementById('error')!.textContent!.includes('Could not load saved'), 'Unresolved load failures must remain visible after unrelated successful saves.');
   return `${failedKey} load failure preserves its saved value during unrelated moves`;
+}
+
+export async function runStatusIsolation(): Promise<string> {
+  await until((): boolean => document.querySelectorAll('.agent-card').length === 4);
+  const baseline: AgentRow = fixture.agents[0];
+  fixture.agents = [
+    { ...baseline, id: 'status-a', workspaceId: 'workspace-a', paneKey: 'shared:pane', title: 'A', state: 'working' },
+    { ...baseline, id: 'status-b', workspaceId: 'workspace-b', paneKey: 'shared:pane', title: 'B', state: 'done' }
+  ];
+  await refresh();
+  const states: () => string[] = (): string[] => Array.from(document.querySelectorAll<HTMLElement>('.agent-card'), (card: HTMLElement): string => card.dataset.state!);
+  fixture.emit('agent.status.changed', { paneKey: 'shared:pane', workspaceId: null, state: 'blocked' });
+  check(same(states(), ['working', 'done']), 'Ambiguous events must not change either workspace.');
+  fixture.emit('agent.status.changed', { paneKey: 'shared:pane', workspaceId: 'workspace-a', state: 'blocked' });
+  check(same(states(), ['blocked', 'done']), 'Qualified events must update only their workspace.');
+  const request: typeof orca.plugin.request = orca.plugin.request;
+  let resolveRoster: ((value: unknown) => void) | undefined;
+  orca.plugin.request = async (name: string, input?: unknown): Promise<unknown> => {
+    if (name === 'roster') return new Promise<unknown>((resolve): void => { resolveRoster = resolve; });
+    return request(name, input);
+  };
+  try {
+    const refreshButton: HTMLButtonElement = document.getElementById('refresh') as HTMLButtonElement;
+    refreshButton.click();
+    await until((): boolean => resolveRoster !== undefined);
+    fixture.emit('agent.status.changed', { paneKey: 'shared:pane', workspaceId: 'workspace-a', state: 'waiting' });
+    resolveRoster!({ agents: fixture.agents.map((row: AgentRow): AgentRow => ({ ...row })), partial: false });
+    orca.plugin.request = request;
+    await until((): boolean => !refreshButton.disabled);
+    check(same(states(), ['waiting', 'done']), 'Deferred roster overlays must keep workspace-qualified status separate.');
+  } finally { orca.plugin.request = request; }
+  return 'workspace-qualified and ambiguous status events stay isolated during refresh';
 }

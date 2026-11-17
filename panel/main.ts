@@ -663,7 +663,7 @@ async function refresh(): Promise<void> {
         if (tooltipOwner === companion) hideWorkspaceTooltip();
         group.list.append(companion.card);
       }
-      const update: { revision: number; state: AgentRow['state'] } | undefined = statusUpdates.get(row.paneKey);
+      const update: { revision: number; state: AgentRow['state'] } | undefined = statusUpdates.get(JSON.stringify([row.workspaceId, row.paneKey]));
       paintCompanion(companion, update && update.revision > queryRevision ? { ...row, state: update.state } : row);
     }
     for (const [id, project] of projects) {
@@ -706,12 +706,17 @@ function scheduleRefresh(): void {
 
 function statusChanged(payload: unknown): void {
   if (payload === null || typeof payload !== 'object') return;
-  const event: { paneKey?: unknown; state?: unknown } = payload as { paneKey?: unknown; state?: unknown };
+  const event: { paneKey?: unknown; workspaceId?: unknown; state?: unknown } = payload as { paneKey?: unknown; workspaceId?: unknown; state?: unknown };
   if (typeof event.paneKey !== 'string') return;
-  statusUpdates.set(event.paneKey, { revision: ++statusRevision, state: agentState(event.state) });
-  for (const companion of companions.values()) {
-    if (companion.row.paneKey !== event.paneKey) continue;
-    paintCompanion(companion, { ...companion.row, state: agentState(event.state) });
+  const workspaceId: string | undefined = typeof event.workspaceId === 'string' ? event.workspaceId : undefined;
+  const matches: Companion[] = Array.from(companions.values()).filter((companion: Companion): boolean =>
+    companion.row.paneKey === event.paneKey && (workspaceId === undefined || companion.row.workspaceId === workspaceId));
+  if (workspaceId === undefined && matches.length !== 1) { scheduleRefresh(); return; }
+  const key: string = JSON.stringify([workspaceId ?? matches[0].row.workspaceId, event.paneKey]);
+  const state: AgentRow['state'] = agentState(event.state);
+  statusUpdates.set(key, { revision: ++statusRevision, state });
+  for (const companion of matches) {
+    paintCompanion(companion, { ...companion.row, state });
   }
   updateSummary();
   scheduleRefresh();

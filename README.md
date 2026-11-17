@@ -115,6 +115,19 @@ The plugin does not submit terminal input, launch agents, access the microphone,
 - The panel uses Orca's right sidebar. Orca 1.4.250 cannot stack Explorer above it.
 - The CLI bridge depends on Orca's response formats. See [API verification](API-VERIFICATION.md) for the checked contracts.
 
+## Development checks
+
+Installing the plugin does not require npm. For development checks:
+
+```sh
+npm ci
+node node_modules/playwright/cli.js install chromium
+npm run verify
+npm run test:browser
+```
+
+The browser command starts its own loopback fixture server on an available port and closes it afterward. It runs the main, ordering, project, audio, and consent suites at 260, 320, and 480 px. Reload checks preserve their scenario's storage; other cases use fresh browser storage and a mock Orca bridge. Tests do not change live plugin settings.
+
 ## Credits and asset rights
 
 - **Original concept:** [mathieucroset/herdr-pokemon-agents](https://github.com/mathieucroset/herdr-pokemon-agents), an MIT-licensed Herdr mod.

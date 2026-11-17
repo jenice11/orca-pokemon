@@ -12,29 +12,35 @@ export interface WorkerApi {
 
 export function registerPanel(orca: WorkerApi, run: typeof callCli): void {
   let current: Roster = { agents: [], partial: false };
-  let pending: Promise<Roster> | null = null;
+  let rosterQueue: Promise<void> = Promise.resolve();
+  let focusQueue: Promise<void> = Promise.resolve();
   orca.panels.handle('roster', async (): Promise<Roster> => {
-    if (pending) return pending;
-    pending = (async (): Promise<Roster> => {
+    const query: Promise<Roster> = rosterQueue.then(async (): Promise<Roster> => {
       const next: Roster = rosterFromCli(await run(['worktree', 'ps', '--limit', '10000']));
       current = next;
       return next;
-    })();
-    try { return await pending; }
-    finally { pending = null; }
+    });
+    // Each refresh needs a snapshot started after its request, including across panels.
+    rosterQueue = query.then((): void => {}, (): void => {});
+    return query;
   });
   orca.panels.handle('focus', async (input: unknown): Promise<{ focused: true }> => {
     const data: Record<string, unknown> = record(input);
     const row: AgentRow | undefined = current.agents.find((agent: AgentRow): boolean => agent.id === data.id);
     if (!row) throw new Error('Unknown agent. Refresh the panel before focusing.');
-    const terminals: unknown = await run(['terminal', 'list', '--worktree', `id:${row.workspaceId}`, '--limit', '10000']);
-    const handle: string = terminalHandle(terminals, row);
-    const result: Record<string, unknown> = record(await run(['terminal', 'switch', '--terminal', handle]));
-    const focus: Record<string, unknown> = record(result.focus ?? {});
-    if (focus.navigated !== true || focus.handle !== handle) {
-      throw new Error('Orca could not focus the agent in this window.');
-    }
-    return { focused: true };
+    const operation: Promise<{ focused: true }> = focusQueue.then(async (): Promise<{ focused: true }> => {
+      const terminals: unknown = await run(['terminal', 'list', '--worktree', `id:${row.workspaceId}`, '--limit', '10000']);
+      const handle: string = terminalHandle(terminals, row);
+      const result: Record<string, unknown> = record(await run(['terminal', 'switch', '--terminal', handle]));
+      const focus: Record<string, unknown> = record(result.focus ?? {});
+      if (focus.navigated !== true || focus.handle !== handle) {
+        throw new Error('Orca could not focus the agent in this window.');
+      }
+      return { focused: true };
+    });
+    // A failed click must not block later clicks; its caller still receives the error.
+    focusQueue = operation.then((): void => {}, (): void => {});
+    return operation;
   });
 }
 

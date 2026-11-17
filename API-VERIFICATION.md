@@ -46,7 +46,7 @@ The worker checks `focus.navigated === true` and matching handle before reportin
 - Approved native worker returned four live agents from two workspaces. Native panel rendered those agents with local images and no logged frame errors.
 - A native `agent.status.changed` test event was delivered to the subscribed HTML panel. Normal roster reconciliation restores authoritative status.
 - Native focus handler and the underlying CLI both confirmed successful navigation to this task's existing terminal.
-- Unit tests cover parsing, live-only filtering, partial results, handle mapping/refusal, bounded deterministic storage keys, safe CLI argument passing/error handling, worker validation, and single-flight roster queries.
+- Unit tests cover parsing, live-only filtering, partial results, handle mapping/refusal, bounded deterministic storage keys, safe CLI argument passing/error handling, worker validation, and serialized fresh roster queries.
 - Eight retained browser scenarios execute the real panel against a fixture-only bridge, including races and failure paths. TypeScript strict checking and offline asset/hash validation pass.
 
 The host's `plugin check` result has empty `panels` for HTML entries; it is not evidence of DOM behavior. Native captures are saved locally under `.orca/shots/` and excluded from distribution. Generated SDK declarations are unavailable in this installed app, so local boundary contracts are used.
