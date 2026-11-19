@@ -53,6 +53,18 @@ try {
       const errors: string[] = [];
       page.on('pageerror', (error: Error): void => { errors.push(error.message); });
       await page.goto(`http://127.0.0.1:${address.port}/panel/index.html${scenario.query ?? ''}`);
+      if (scenario.module === 'browser') {
+        await page.waitForSelector('.species-picker:enabled');
+        await page.locator('.species-picker').first().click();
+        await page.locator('#audio-enable:enabled').focus();
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('#audio-consent:modal');
+        await page.keyboard.press('Escape');
+        if (await page.locator('#audio-consent').evaluate((dialog: HTMLDialogElement): boolean => dialog.open)) {
+          throw new Error('Escape must dismiss modal consent before the background species menu.');
+        }
+        await page.keyboard.press('Escape');
+      }
       const run: (method: string) => Promise<void> = async (method: string): Promise<void> => {
         await page.evaluate(async ({ module, method }: { module: string; method: string }): Promise<void> => {
           await document.fonts.ready;

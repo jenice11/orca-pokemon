@@ -74,8 +74,8 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
 
   function paintPermission(): void {
     card.hidden = !savedAutoStart || !preferenceVerified;
-    enable.hidden = savedAutoStart && preferenceVerified;
     disable.hidden = !savedAutoStart && status.session !== session;
+    enable.hidden = !disable.hidden;
     enable.disabled = disable.disabled = allow.disabled = cancel.disabled = preferenceSaving || !initialized;
   }
 
@@ -116,8 +116,14 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
       idleAnimation = undefined;
     }
     label.dataset.quiet = String(waiting || (owner && status.state === 'listening'));
-    label.textContent = waiting ? 'Waiting for previous capture to stop…' : active && !owner ? 'Capture active in another panel. Close that panel first.' :
-      status.state === 'listening' && paused ? 'Capturing Spotify · display paused.' : status.message;
+    const message: string = status.state === 'error' ? status.message :
+      active && !owner ? 'Capture active in another panel. Close that panel first.' : '';
+    if (label.textContent !== message) {
+      label.textContent = message;
+      label.style.animation = 'none';
+      void label.offsetWidth;
+      label.style.animation = '';
+    }
     label.dataset.state = status.state;
     if (status.state !== 'listening' || paused || !owner) flatten();
     if (!canHeartbeat()) {

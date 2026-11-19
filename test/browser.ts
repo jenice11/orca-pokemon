@@ -90,26 +90,62 @@ export async function run(): Promise<string[]> {
   await until((): boolean => document.querySelectorAll('.agent-card').length === 4 && !select().disabled);
   await orca.host.call('storage.set', { key: 'cards.order.v1', value: [] });
   await until((): boolean => firstCard().querySelector('h2')!.textContent === fixture.agents[0].title);
+  const liveDialogue: HTMLElement = firstCard().querySelector('.companion-dialogue')!;
+  check(liveDialogue.getAttribute('role') === 'status' && liveDialogue.getAttribute('aria-live') === 'polite' &&
+    liveDialogue.getAttribute('aria-atomic') === 'true', 'Dialogue changes must expose a polite, complete status announcement.');
+  let repeatedAnnouncements: number = 0;
+  const announcements: MutationObserver = new MutationObserver((records: MutationRecord[]): void => { repeatedAnnouncements += records.length; });
+  announcements.observe(liveDialogue, { childList: true, characterData: true, subtree: true });
+  announcements.observe(document.getElementById('summary')!, { childList: true, characterData: true, subtree: true });
+  await refresh();
+  await Promise.resolve();
+  announcements.disconnect();
+  check(repeatedAnnouncements === 0, 'Refreshing unchanged agents must not repeat dialogue or summary announcements.');
   if (reduceMotion) {
     check(document.body.classList.contains('paused') && document.getAnimations().every((animation: Animation): boolean => animation.playState !== 'running'), 'Reduced motion must start with sprite and status animations stopped.');
   } else check(document.getAnimations().length >= 4, 'Sprite and status animations must run.');
   check(document.documentElement.scrollWidth <= innerWidth, 'Panel must not overflow horizontally.');
   check(document.querySelector('.card-bottom') === null, 'Species controls must not reserve a bottom row on every card.');
   check(getComputedStyle(document.querySelector('.habitat')!).height === '72px', 'Agent cards must use the compact sprite area.');
+  const dialogueStyle: CSSStyleDeclaration = getComputedStyle(liveDialogue);
+  check(dialogueStyle.fontSize === '10px' && liveDialogue.offsetHeight + parseFloat(dialogueStyle.marginTop) +
+    parseFloat(dialogueStyle.marginBottom) <= 27, 'Single-line dialogue must stay compact without shrinking text.');
+  check(getComputedStyle(document.querySelector('main')!).padding === '10px' &&
+    getComputedStyle(document.getElementById('agents')!).gap === '6px' &&
+    getComputedStyle(document.querySelector('.project-agents')!).gap === '6px', 'Roster padding and gaps must preserve panel space.');
+  for (const control of Array.from(document.querySelectorAll<HTMLButtonElement>('.bottom-bar-controls > button:not([hidden])'))) {
+    const icon: DOMRect = control.querySelector('svg')!.getBoundingClientRect();
+    const text: DOMRect = control.querySelector('span')!.getBoundingClientRect();
+    check(control.getBoundingClientRect().height === 40 && icon.right <= text.left &&
+      Math.abs(icon.top + icon.height / 2 - text.top - text.height / 2) <= 1,
+    'Footer controls must keep 40px targets with icons beside their labels.');
+  }
   check(document.querySelector('.toolbar')!.contains(document.getElementById('agent-sort')) && document.querySelector('.toolbar')!.contains(button('motion')), 'Count, Sort, and Pause must share one toolbar.');
-  check(document.getElementById('order-note') === null && document.querySelector('header p') === null, 'Permanent help text and the header subtitle must not consume panel space.');
+  check(document.getElementById('order-note') === null && document.querySelector('header > p') === null, 'Permanent help text and the header subtitle must not consume panel space.');
+  const usageTooltip: HTMLElement = document.getElementById('usage-tooltip')!;
+  check(usageTooltip.hasAttribute('popover') && !usageTooltip.matches(':popover-open') && usageTooltip.getClientRects().length === 0, 'Usage help must stay out of the layout until requested.');
   check(getComputedStyle(document.querySelector('h1')!).fontSize === '18px', 'Panel heading must use the compact size.');
   const originalWorkspace: string = fixture.agents[0].workspace;
   const originalAgent: string = fixture.agents[0].agent;
+  const originalTitle: string = fixture.agents[0].title;
+  fixture.agents[0].title = 'A very long agent task title that must truncate without widening the narrow panel';
   fixture.agents[0].workspace = 'A long workspace name that must remain on one line instead of expanding the agent card';
   fixture.agents[0].agent = 'A long agent label that must truncate instead of expanding the card';
   await refresh();
+  check(document.documentElement.scrollWidth <= innerWidth, 'Long task and agent names must not widen the panel.');
+  check(firstCard().scrollWidth <= firstCard().clientWidth, 'Long labels and dialogue must stay inside the card.');
   const agentIcon: HTMLButtonElement = firstCard().querySelector('.agent-icon')!;
   const areaBounds: DOMRect = firstCard().querySelector('.sprite-area')!.getBoundingClientRect();
   const iconBounds: DOMRect = agentIcon.getBoundingClientRect();
   check(firstCard().querySelector('.identity p') === null, 'Agent type must not reserve a text row in the card header.');
-  check(Math.abs(iconBounds.right - (areaBounds.right - 6)) <= 1 && Math.abs(iconBounds.bottom - (areaBounds.bottom - 6)) <= 1, 'Agent icon must sit in the bottom-right of the sprite area.');
-  check(iconBounds.width >= 24 && iconBounds.height >= 24, 'Small agent marks must retain an accessible click target.');
+  check(Math.abs(iconBounds.right - (areaBounds.right - 10)) <= 1 && Math.abs(iconBounds.bottom - (areaBounds.bottom - 6)) <= 1, 'Agent icon must sit in the bottom-right of the sprite area.');
+  const gripBounds: DOMRect = firstCard().querySelector('.drag-grip')!.getBoundingClientRect();
+  const ballBounds: DOMRect = select().getBoundingClientRect();
+  for (const bounds of [iconBounds, gripBounds, ballBounds]) {
+    check(bounds.width === 24 && bounds.height === 24, 'Icon controls must share a 24px square click target.');
+  }
+  check(Math.abs(gripBounds.left + gripBounds.width / 2 - ballBounds.left - ballBounds.width / 2) <= 1, 'Drag grip and Poké Ball must share a vertical centerline.');
+  check(Math.abs(ballBounds.bottom - iconBounds.bottom) <= 1, 'Lower icon controls must share a baseline.');
   check(agentIcon.dataset.agent === 'unknown' && agentIcon.getAttribute('aria-label')!.includes(fixture.agents[0].agent), 'Unknown agent types must use a neutral fallback with the full accessible agent name.');
   const terminalFocusCalls: number = fixture.calls.filter((call): boolean => call.name === 'focus').length;
   agentIcon.click();
@@ -151,6 +187,7 @@ export async function run(): Promise<string[]> {
   dock.style.height = previousHeight;
   fixture.agents[0].workspace = originalWorkspace;
   fixture.agents[0].agent = originalAgent;
+  fixture.agents[0].title = originalTitle;
   await refresh();
   agentIcon.focus();
   check(workspaceTooltip.getBoundingClientRect().width < rosterBounds.width, 'Short workspace details must use a content-sized tooltip rather than span the panel.');
@@ -177,6 +214,7 @@ export async function run(): Promise<string[]> {
       check(style.backgroundColor === 'rgb(22, 163, 74)', 'Done must use green.');
       check(getComputedStyle(card.querySelector('.sprite')!).backgroundImage.includes('Sleep'), 'Done companions must use sleeping sprites.');
     }
+    check(getComputedStyle(card.querySelector('.companion-dialogue')!).backgroundColor === 'rgb(32, 35, 42)', 'Dialogue must keep a dark background.');
   }
   passed.push('four states render with animations and no horizontal overflow');
 
@@ -271,6 +309,7 @@ export async function run(): Promise<string[]> {
   await until((): boolean => !workAnimation.disabled);
   check(!document.getElementById('species-panel')!.matches(':popover-open'), 'Saving a work animation must close the popup.');
   check(document.activeElement === select(), 'Saving a work animation must restore Poké Ball focus.');
+  check(firstCard().querySelector('.companion-dialogue')!.textContent!.startsWith('Pikachu '), 'Status dialogue must name the current Pokémon.');
   if (!document.body.classList.contains('paused') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     check(firstCard().querySelector('.habitat')!.classList.contains('selection-hop'), 'A successful animation choice must trigger a confirmation hop.');
     button('motion').click();
@@ -336,6 +375,7 @@ export async function run(): Promise<string[]> {
   for (const state of ['done', 'working'] as const) {
     fixture.agents[0].state = state;
     fixture.emit('agent.status.changed', { paneKey: 'tab:0', state });
+    check(liveDialogue.textContent === (state === 'done' ? 'Pikachu done. Now rests.' : 'Pikachu works.'), 'Live dialogue must describe the current state.');
     const badge: HTMLElement = firstCard().querySelector('.state')!;
     const badgeStyle: CSSStyleDeclaration = getComputedStyle(badge);
     check(badge.textContent === (state === 'done' ? 'Done' : 'Working'), 'Status must retain its accessible text.');
@@ -444,15 +484,17 @@ export async function run(): Promise<string[]> {
   const scroller: HTMLElement = document.querySelector('main')!;
   const spotify: HTMLElement = document.querySelector('.audio-card')!;
   const spotifyTop: number = spotify.getBoundingClientRect().top;
+  const bottomBar: DOMRect = document.querySelector('.bottom-bar')!.getBoundingClientRect();
+  check(Math.abs(bottomBar.bottom - innerHeight) <= 1, 'Bottom controls must stay at the viewport bottom.');
   check(scroller.scrollHeight > scroller.clientHeight, 'Many agents must scroll inside the roster area.');
   scroller.scrollTop = scroller.scrollHeight;
   await new Promise<number>(requestAnimationFrame);
   check(scroller.scrollTop > 0, 'Roster must scroll independently.');
   check(Math.abs(spotify.getBoundingClientRect().top - spotifyTop) <= 1, 'Spotify must stay pinned while agents scroll.');
   if (spotify.hidden) {
-    check(Math.abs(scroller.getBoundingClientRect().bottom - innerHeight) <= 1, 'Disabled Spotify must release its space to the roster.');
+    check(Math.abs(scroller.getBoundingClientRect().bottom - bottomBar.top) <= 1, 'Disabled Spotify must release its space above the bottom controls to the roster.');
   } else {
-    check(Math.abs(spotify.getBoundingClientRect().bottom - (innerHeight - 10)) <= 1, 'Spotify must remain at the panel bottom.');
+    check(Math.abs(spotify.getBoundingClientRect().bottom - (bottomBar.top - 10)) <= 1, 'Spotify must remain above the bottom controls.');
     check(scroller.getBoundingClientRect().bottom <= spotifyTop, 'Pinned Spotify must not cover the agent area.');
   }
   fixture.agents = originalAgents;

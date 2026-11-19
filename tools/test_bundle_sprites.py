@@ -51,7 +51,7 @@ for (const species of pokemon) {
   rendered[species.name] = {};
   for (const [pose, state] of [['walk', 'working'], ['idle', 'idle'], ['sleep', 'done'], ...(species.animations.shock ? [['shock', 'working'], ['tumble', 'working'], ['tumbleback', 'working']] : [])]) {
     const selected = pose === 'tumbleback' ? { ...species, animations: { ...species.animations, tumble: undefined } } : species;
-    const companion = { row: { state }, species: selected, workAnimation: pose, sprite: { style: {}, dataset: {} } };
+    const companion = { row: { state }, dialogue: {}, species: selected, workAnimation: pose, sprite: { style: {}, dataset: {} } };
     context.animateSprite(companion);
     if (!companion.sprite.style.backgroundImage.includes(species.animations[pose].path)) throw new Error(`Wrong animation: ${species.name} ${pose}`);
     rendered[species.name][pose] = companion.sprite.style;
@@ -61,7 +61,7 @@ console.log(JSON.stringify(rendered));
 context.paused = false;
 for (const species of pokemon) {
   let captured;
-  const companion = { row: { state: 'working' }, species, sprite: {
+  const companion = { row: { state: 'working' }, dialogue: {}, species, sprite: {
     style: {}, dataset: {}, animate(frames, options) { captured = { frames, options }; return { cancel() {} }; }
   } };
   context.animateSprite(companion);
@@ -80,7 +80,7 @@ for (const species of pokemon) {
 }
 const pikachu = pokemon.find(species => species.id === 25);
 let tumble;
-context.animateSprite({ row: { state: 'working' }, species: pikachu, workAnimation: 'tumbleback', sprite: {
+context.animateSprite({ row: { state: 'working' }, dialogue: {}, species: pikachu, workAnimation: 'tumbleback', sprite: {
   style: {}, dataset: {}, animate(frames, options) { tumble = { frames, options }; return { cancel() {} }; }
 } });
 if (tumble.options.duration !== 3600 || tumble.frames.length !== 19) throw new Error('Wrong tumble timing');

@@ -8,31 +8,20 @@
   </head>
   <body>
     <header>
-      <div class="heading"><h1>Poké crew</h1><button id="refresh" type="button">Refresh</button></div>
+      <div class="heading"><h1>Poké crew</h1><div class="heading-actions"><button id="usage-help" type="button" popovertarget="usage-tooltip" aria-label="How to use" title="How to use">?</button><button id="refresh" type="button">Refresh</button></div></div>
+      <div id="usage-tooltip" popover="auto" aria-labelledby="usage-title">
+        <h2 id="usage-title">How to use</h2>
+        <p>Click a Pokémon to focus its agent.<br />Click its Poké Ball for Work and Pokémon options.</p>
+        <p>Shows live terminal agents on this Orca host and its reachable SSH hosts, not structured chats or paired servers. Refresh after an agent exits.</p>
+      </div>
     </header>
     <main>
-      <div class="toolbar"><span id="summary" role="status">Finding your crew…</span><div class="order-toolbar"><label for="agent-sort">Sort</label><select id="agent-sort" disabled><option value="manual">Manual</option><option value="attention">Needs attention first</option><option value="name">Name</option></select></div><button id="motion" type="button" aria-pressed="false">Pause</button></div>
+      <div class="toolbar"><span id="summary" role="status">Finding your crew…</span><div class="order-toolbar"><label for="agent-sort">Sort</label><select id="agent-sort" disabled><option value="manual">Manual</option><option value="attention">Needs attention first</option><option value="name">Name</option></select></div><button id="motion" type="button" aria-pressed="false" aria-label="Pause motion" title="Pause motion"><svg class="motion-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z" /></svg><svg class="motion-resume" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg></button></div>
       <p id="order-announcement" class="visually-hidden" role="status"></p>
       <p id="error" role="alert" hidden></p>
       <p id="partial" class="notice" hidden>Partial roster: some workspaces or hosts were not returned.</p>
       <section id="agents" aria-label="Live terminal agents"></section>
       <div id="empty" class="empty" hidden><div class="pokeball" aria-hidden="true"></div><h2>No companions yet</h2><p>Start an agent in an Orca terminal.<br />Your Pokémon will appear here.</p></div>
-      <footer>
-        <p>Click a Pokémon to focus its agent.<br />Click its Poké Ball to search species.</p>
-        <div class="audio-settings">
-          <div class="audio-controls"><button id="audio-enable" type="button" disabled>Allow Spotify visualizer</button><button id="audio-disable" type="button" hidden disabled>Disable visualizer</button></div>
-          <p id="audio-status" role="status">Spotify visualizer off</p>
-          <dialog id="audio-consent" class="audio-consent" aria-labelledby="audio-consent-title" hidden>
-            <h3 id="audio-consent-title">Allow automatic Spotify capture?</h3>
-            <p>This panel will capture Spotify output now and on future opens or reloads, without asking again. No microphone, saved audio, or uploads. macOS audio permission is still required.</p>
-            <p>Choose Disable visualizer in the panel controls to revoke this choice and stop capture. Closing the panel also stops capture; future opens can start again while permission remains enabled.</p>
-            <p id="audio-consent-error" role="alert"></p>
-            <div class="audio-controls"><button id="audio-allow" type="button">Allow and remember</button><button id="audio-cancel" type="button">Cancel</button></div>
-          </dialog>
-          <p id="audio-preference-status" role="status"></p>
-        </div>
-        <details><summary>About &amp; credits</summary><p>22 bundled Pokémon. Live terminal agents on this Orca host and its reachable SSH hosts; not structured chats or paired servers. Refresh after an agent exits.</p><p>Inspired by mathieucroset/herdr-pokemon-agents (MIT). Sprite art: PMDCollab / SpriteCollab contributors, CC BY-NC 4.0. Full artist credits and source links: ATTRIBUTION.md in this plugin.</p><p>Noncommercial fan project. Pokémon © Nintendo, Creatures, GAME FREAK. Not affiliated or endorsed.</p></details>
-      </footer>
     </main>
     <div id="species-panel" popover="manual" role="dialog" aria-label="Pokémon battle menu">
       <div id="battle-menu">
@@ -50,12 +39,38 @@
       </div>
       <p id="battle-save-status" role="status" aria-live="polite" aria-atomic="true"></p>
     </div>
+    <div class="audio-dock">
     <section id="audio-card" class="audio-card" aria-labelledby="audio-title" hidden>
         <div class="audio-heading"><h2 id="audio-title">Spotify</h2><span class="audio-local">Desktop</span></div>
         <div id="audio-loader" class="audio-loader" aria-hidden="true"><span></span></div>
         <div id="audio-idle" class="audio-idle" role="img" aria-label="Snorlax resting" hidden><span id="audio-idle-sprite" class="sprite"></span></div>
         <div id="audio-bands" class="audio-bands" role="img" aria-label="Spotify output frequency spectrum" hidden></div>
     </section>
+    <div class="audio-notices">
+      <p id="audio-status" role="status" data-state="off"></p>
+      <p id="audio-preference-status" role="status"></p>
+    </div>
+    </div>
+    <footer class="bottom-bar">
+      <div class="bottom-bar-controls">
+        <button id="audio-enable" class="audio-power" type="button" aria-label="Allow Spotify visualizer" aria-pressed="false" title="Turn on Spotify visualizer" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M6 9c4-1.5 8-1.2 12 1M7 12.5c3.4-1.2 6.7-.9 10 1M8 16c2.7-.9 5.3-.6 8 .8" /><path class="spotify-slash" d="m3 3 18 18" /></svg><span>Spotify</span></button>
+        <button id="audio-disable" class="audio-power" type="button" aria-label="Disable visualizer" aria-pressed="true" title="Turn off Spotify visualizer" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M6 9c4-1.5 8-1.2 12 1M7 12.5c3.4-1.2 6.7-.9 10 1M8 16c2.7-.9 5.3-.6 8 .8" /></svg><span>Spotify</span></button>
+        <button id="credits-button" type="button" popovertarget="credits-popup" aria-label="About and credits"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></svg><span>About</span></button>
+      </div>
+      <dialog id="audio-consent" class="audio-consent" aria-labelledby="audio-consent-title" hidden>
+        <h3 id="audio-consent-title">Allow automatic Spotify capture?</h3>
+        <p>This panel will capture Spotify output now and on future opens or reloads, without asking again. No microphone, saved audio, or uploads. macOS audio permission is still required.</p>
+        <p>Use the Spotify visualizer power button to revoke this choice and stop capture. Closing the panel also stops capture; future opens can start again while permission remains enabled.</p>
+        <p id="audio-consent-error" role="alert"></p>
+        <div class="audio-controls"><button id="audio-allow" type="button">Allow and remember</button><button id="audio-cancel" type="button">Cancel</button></div>
+      </dialog>
+      <div id="credits-popup" popover="auto" role="dialog" aria-labelledby="credits-title">
+        <h2 id="credits-title">About &amp; credits</h2>
+        <p>Inspired by mathieucroset/herdr-pokemon-agents (MIT). Sprite art: PMDCollab / SpriteCollab contributors, CC BY-NC 4.0. Full artist credits and source links: ATTRIBUTION.md in this plugin.</p>
+        <p>Noncommercial fan project. Pokémon © Nintendo, Creatures, GAME FREAK. Not affiliated or endorsed.</p>
+        <button type="button" popovertarget="credits-popup" popovertargetaction="hide">Close</button>
+      </div>
+    </footer>
     <div id="workspace-tooltip" class="workspace-tooltip" role="tooltip" hidden><span id="workspace-tooltip-text"></span></div>
     <script type="module" src="./main.ts"></script>
   </body>

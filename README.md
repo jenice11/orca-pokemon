@@ -78,6 +78,8 @@ Saved order contains hashed agent and project identities, not agent names or wor
 
 ## Spotify visualizer
 
+The power icon beside **Spotify visualizer** turns it on or off. Its highlighted state means saved permission is enabled; turning it on still requires the consent confirmation.
+
 1. Play a song in Spotify desktop on this Mac. Spotify Connect playback on another device cannot be captured here.
 2. Choose **Allow Spotify visualizer**, read the confirmation popup, and choose **Allow and remember**. Cancel or Escape closes it without granting permission. If macOS asks, approve system-audio recording for the helper or its responsible host in **System Settings → Privacy & Security → Screen & System Audio Recording**.
 3. Hide or close the panel to end capture. Automatic start is off by default.
@@ -129,6 +131,8 @@ npm run test:browser
 ```
 
 The browser command starts its own loopback fixture server on an available port and closes it afterward. It runs the main, ordering, project, audio, and consent suites at 260, 320, and 480 px. The main suite also runs with reduced motion. Reload checks preserve their scenario's storage; other cases use fresh browser storage and a mock Orca bridge. Tests do not change live plugin settings.
+
+Live-region tests verify announcement text and suppress unchanged refresh updates. They do not verify spoken output from VoiceOver or another screen reader.
 
 ## Credits and asset rights
 

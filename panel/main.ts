@@ -17,6 +17,7 @@ interface Companion {
   title: HTMLElement;
   agentBadge: HTMLButtonElement;
   status: HTMLElement;
+  dialogue: HTMLElement;
   focus: HTMLButtonElement;
   signal: HTMLElement;
   select: HTMLButtonElement;
@@ -525,6 +526,15 @@ function createProject(id: string, name: string, storageKey: string): ProjectGro
 }
 
 function animateSprite(companion: Companion): void {
+  const dialogue: Record<AgentRow['state'], string> = {
+    working: 'works.',
+    blocked: 'needs help!',
+    waiting: 'waits for you.',
+    done: 'done. Now rests.',
+    unknown: 'status unknown.'
+  };
+  const message: string = `${companion.species.name} ${dialogue[companion.row.state]}`;
+  if (companion.dialogue.textContent !== message) companion.dialogue.textContent = message;
   companion.animation?.cancel();
   companion.animation = null;
   if (companion.disposed) return;
@@ -595,9 +605,8 @@ function animateSprite(companion: Companion): void {
 
 function updateMotion(): void {
   document.body.classList.toggle('paused', paused);
-  motionButton.textContent = paused ? 'Resume' : 'Pause';
-  motionButton.title = paused ? 'Resume motion' : 'Pause motion';
-  motionButton.setAttribute('aria-label', motionButton.title);
+  motionButton.setAttribute('aria-label', paused ? 'Resume motion' : 'Pause motion');
+  motionButton.removeAttribute('title');
   motionButton.setAttribute('aria-pressed', String(paused));
   for (const companion of companions.values()) {
     if (paused || reducedMotion.matches) {
@@ -646,6 +655,12 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
   const select: HTMLButtonElement = card.querySelector('.species-picker')!;
   const species: Pokemon = POKEMON[defaultPokemon(row.id, POKEMON.length)];
   const workSelect: HTMLFieldSetElement = document.createElement('fieldset');
+  const dialogue: HTMLParagraphElement = document.createElement('p');
+  dialogue.className = 'companion-dialogue';
+  dialogue.setAttribute('role', 'status');
+  dialogue.setAttribute('aria-live', 'polite');
+  dialogue.setAttribute('aria-atomic', 'true');
+  card.append(dialogue);
   workSelect.className = 'work-animation';
   workSelect.setAttribute('aria-label', 'Pikachu work animation');
   workSelect.innerHTML = '<button type="button" value="walk">Walk</button><button type="button" value="shock">Shock</button><button type="button" value="tumbleback">Tumble</button>';
@@ -657,6 +672,7 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
     title: card.querySelector('h2')!,
     agentBadge: card.querySelector('.agent-icon')!,
     status: card.querySelector('.state-label')!,
+    dialogue,
     focus: card.querySelector('.habitat')!,
     grip: card.querySelector('.drag-grip')!,
     signal: card.querySelector('.signal')!,
@@ -794,13 +810,21 @@ function paintCompanion(companion: Companion, row: AgentRow): void {
   companion.focus.setAttribute('aria-label', `Focus ${row.title} in ${row.workspace}`);
   companion.focus.title = `Focus ${row.title}`;
   companion.select.setAttribute('aria-label', `Pokémon for ${row.title} in ${row.workspace}`);
-  companion.signal.textContent = row.state === 'blocked' ? '!' : row.state === 'done' ? 'z z' : row.state === 'waiting' ? '…' : '';
+  companion.signal.textContent = row.state === 'blocked' ? '!' : row.state === 'done' ? 'zz' : row.state === 'waiting' ? '?' : '';
+  if (row.state !== 'blocked') companion.signal.classList.remove('state-pop');
+  if (changed && row.state === 'blocked' && !paused && !reducedMotion.matches) {
+    companion.signal.classList.add('state-pop');
+    companion.signal.addEventListener('animationend', (): void => {
+      companion.signal.classList.remove('state-pop');
+    }, { once: true });
+  }
   if (changed || !companion.sprite.style.backgroundImage) animateSprite(companion);
 }
 
 function updateSummary(): void {
   const blocked: number = [...companions.values()].filter((companion: Companion): boolean => companion.row.state === 'blocked').length;
-  summary.textContent = `${companions.size} companion${companions.size === 1 ? '' : 's'}${rosterStale ? ' · stale' : blocked ? ` · ${blocked} need${blocked === 1 ? 's' : ''} you` : ' · live'}`;
+  const message: string = `${companions.size} companion${companions.size === 1 ? '' : 's'}${rosterStale ? ' · stale' : blocked ? ` · ${blocked} need${blocked === 1 ? 's' : ''} you` : ' · live'}`;
+  if (summary.textContent !== message) summary.textContent = message;
 }
 
 async function refresh(): Promise<void> {
@@ -911,6 +935,27 @@ function statusChanged(payload: unknown): void {
 }
 
 async function start(): Promise<void> {
+  const usageButton: HTMLButtonElement = element('usage-help');
+  const usageTooltip: HTMLElement = element('usage-tooltip');
+  let usageHideTimer: ReturnType<typeof setTimeout> | undefined;
+  function showUsage(): void {
+    clearTimeout(usageHideTimer);
+    usageTooltip.showPopover();
+  }
+  function hideUsageSoon(): void {
+    clearTimeout(usageHideTimer);
+    usageHideTimer = setTimeout((): void => { usageTooltip.hidePopover(); }, 100);
+  }
+  usageButton.removeAttribute('popovertarget');
+  usageButton.removeAttribute('title');
+  usageButton.setAttribute('aria-describedby', 'usage-tooltip');
+  usageButton.addEventListener('pointerenter', showUsage);
+  usageButton.addEventListener('pointerleave', hideUsageSoon);
+  usageTooltip.addEventListener('pointerenter', showUsage);
+  usageTooltip.addEventListener('pointerleave', hideUsageSoon);
+  usageButton.addEventListener('focus', showUsage);
+  usageButton.addEventListener('click', showUsage);
+  usageButton.addEventListener('blur', (): void => { usageTooltip.hidePopover(); });
   list.parentElement!.addEventListener('scroll', (): void => { closeSpecies(speciesPanel.contains(document.activeElement)); });
   new ResizeObserver((): void => { closeSpecies(speciesPanel.contains(document.activeElement)); }).observe(list.parentElement!);
   list.addEventListener('dragstart', (): void => { closeSpecies(); });
