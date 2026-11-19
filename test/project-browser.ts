@@ -2,6 +2,7 @@ import { choiceKey, type AgentRow } from '../model.ts';
 
 declare const fixture: {
   agents: AgentRow[];
+  failOrderRead: string | null;
   calls: { name?: string; method?: string; params?: { key: string } }[];
   emit(event: string, payload: unknown): void;
 };
@@ -274,6 +275,7 @@ export async function verifyPartialReadFailure(): Promise<string> {
   const failedKey: string | null = new URL(location.href).searchParams.get('fail-order-read');
   check(failedKey === projectOrderKey || failedKey === cardOrderKey, 'Use a fail-order-read preview URL for this test.');
   await until((): boolean => document.querySelectorAll('.agent-card').length === 4);
+  await orca.host.call('storage.set', { key: failedKey, value: [await choiceKey('absent-order-history')] });
   const persisted: Map<string, unknown> = new Map(JSON.parse(sessionStorage.getItem('pokemon-preview-storage') ?? '[]'));
   const original: unknown = persisted.get(failedKey);
   await install(customRows());
@@ -292,8 +294,23 @@ export async function verifyPartialReadFailure(): Promise<string> {
   await new Promise<number>(requestAnimationFrame);
   const after: Map<string, unknown> = new Map(JSON.parse(sessionStorage.getItem('pokemon-preview-storage') ?? '[]'));
   check(same(after.get(failedKey), original), 'Moving one order must not overwrite a different order whose initial read failed.');
+  const beforeLocalMove: string[] = failedKey === cardOrderKey ? keys(cards(groups()[0])) : keys();
+  if (failedKey === cardOrderKey) cards(groups()[0])[0].querySelector<HTMLButtonElement>('.drag-grip')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true }));
+  else groups()[0].querySelector<HTMLButtonElement>('.project-grip')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true }));
+  await new Promise<number>(requestAnimationFrame);
+  const localOrder: string[] = failedKey === cardOrderKey ? keys(cards(groups()[0])) : keys();
+  check(!same(localOrder, beforeLocalMove), 'Failed reads must still permit local rearrangement.');
+  const afterLocalMove: Map<string, unknown> = new Map(JSON.parse(sessionStorage.getItem('pokemon-preview-storage') ?? '[]'));
+  check(same(afterLocalMove.get(failedKey), original), 'Moving the unread order must preserve its saved absent-item history.');
   check(document.getElementById('error')!.textContent!.includes('Could not load saved'), 'Unresolved load failures must remain visible after unrelated successful saves.');
-  return `${failedKey} load failure preserves its saved value during unrelated moves`;
+  fixture.failOrderRead = null;
+  await refresh();
+  await until((): boolean => !document.getElementById('error')!.textContent!.includes('Could not load saved'));
+  if (failedKey === cardOrderKey) cards(groups()[0])[0].querySelector<HTMLButtonElement>('.drag-grip')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true }));
+  else groups()[0].querySelector<HTMLButtonElement>('.project-grip')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true }));
+  await checkSaved(failedKey, failedKey === cardOrderKey ? keys(cards(groups()[0])) : keys());
+  check((await saved(failedKey)).includes((original as string[])[0]), 'Saving after a successful read must retain absent-item history.');
+  return `${failedKey} read failure preserves history and Refresh restores saving after storage recovers`;
 }
 
 export async function runStatusIsolation(): Promise<string> {

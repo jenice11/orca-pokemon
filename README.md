@@ -67,6 +67,8 @@ The Poké Ball opens a battle-style popup. Choose **Pokémon** to search species
 
 ## Arrange agents
 
+Use the **Filter and sort agents** icon beside Pause to open status and sort options. Filter by Working, Needs help, or Waiting / Done; **All statuses** restores the full roster, including agents without a recognized status. Waiting / Done shows both states without changing their card status or animation. Unreported statuses are never assumed to be done. Filtered counts show matching/total agents. The active status appears beside the icon; click its × to clear only the filter, keeping your sort and order. Empty projects disappear, but saved order and collapsed groups are retained. Status changes update matches immediately. Filter and sort choices last until the panel reloads. Press Escape, click outside, or click the icon again to close the popup.
+
 - Agents are grouped by project, with a collapsible heading and agent count. A small Claude, Codex, or OpenCode icon sits at the bottom-right of each sprite area instead of an agent-type text row. Hover, focus, or click the icon for the agent name only; clicking the Pokémon still focuses its terminal. Other agent types use a neutral terminal mark.
 - **Manual** is the default. Drag a card's header grip within its project, or focus the grip and use **Arrow Up** or **Arrow Down**. The Pokémon still focuses its terminal.
 - Drag a project heading's grip to rearrange whole groups, or focus the grip and use **Arrow Up** or **Arrow Down**. Project order is saved independently of agent order. Collapsing a group is preserved during refreshes, not across panel reloads.
@@ -75,6 +77,8 @@ The Poké Ball opens a battle-style popup. Choose **Pokémon** to search species
 - Status updates do not shuffle cards. Select a sort or click **Refresh** to apply it again. Choose **Manual** before rearranging cards.
 
 Saved order contains hashed agent and project identities, not agent names or workspace paths. Projects use repository identity and execution host, so matching display names do not merge unrelated repositories. Older rosters without repository identity fall back to separate workspace groups. Existing species choices and manual agent order are retained. Save failures keep your local arrangement and show an error; move a card or project again to retry. Concurrent panels use last-writer-wins storage.
+
+If saved order cannot be read, moves stay local to protect existing saved positions. After storage recovers, click **Refresh** to reload saved order and resume saving.
 
 ## Spotify visualizer
 
@@ -130,7 +134,9 @@ npm run verify
 npm run test:browser
 ```
 
-The browser command starts its own loopback fixture server on an available port and closes it afterward. It runs the main, ordering, project, audio, and consent suites at 260, 320, and 480 px. The main suite also runs with reduced motion. Reload checks preserve their scenario's storage; other cases use fresh browser storage and a mock Orca bridge. Tests do not change live plugin settings.
+The browser command starts its own loopback fixture server on an available port and closes it afterward. It runs the main, filtering, ordering, project, audio, and consent suites at 260, 320, and 480 px. The main suite also runs with reduced motion. Reload checks preserve their scenario's storage; other cases use fresh browser storage and a mock Orca bridge. Tests do not change live plugin settings.
+
+Targeted layout checks also cover 320/400 px heights and doubled text sizes, not OS or browser zoom.
 
 Live-region tests verify announcement text and suppress unchanged refresh updates. They do not verify spoken output from VoiceOver or another screen reader.
 

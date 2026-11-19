@@ -16,13 +16,21 @@
       </div>
     </header>
     <main>
-      <div class="toolbar"><span id="summary" role="status">Finding your crew…</span><div class="order-toolbar"><label for="agent-sort">Sort</label><select id="agent-sort" disabled><option value="manual">Manual</option><option value="attention">Needs attention first</option><option value="name">Name</option></select></div><button id="motion" type="button" aria-pressed="false" aria-label="Pause motion" title="Pause motion"><svg class="motion-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z" /></svg><svg class="motion-resume" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg></button></div>
+      <div class="toolbar"><span id="summary" role="status">Finding your crew…</span><div class="toolbar-actions"><button id="clear-filter" type="button" aria-label="Clear status filter" hidden><span id="active-filter-label"></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button><button id="view-options-button" type="button" popovertarget="view-options" aria-haspopup="dialog" aria-controls="view-options" aria-expanded="false" aria-label="Filter and sort agents" title="Filter and sort agents" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="8" cy="6" r="2" /><circle cx="16" cy="12" r="2" /><circle cx="10" cy="18" r="2" /></svg></button><button id="motion" type="button" aria-pressed="false" aria-label="Pause motion" title="Pause motion"><svg class="motion-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z" /></svg><svg class="motion-resume" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg></button></div></div>
       <p id="order-announcement" class="visually-hidden" role="status"></p>
       <p id="error" role="alert" hidden></p>
       <p id="partial" class="notice" hidden>Partial roster: some workspaces or hosts were not returned.</p>
       <section id="agents" aria-label="Live terminal agents"></section>
+      <p id="filter-empty" class="notice" role="status" hidden>No agents match this status. Clear the status filter to show everyone.</p>
       <div id="empty" class="empty" hidden><div class="pokeball" aria-hidden="true"></div><h2>No companions yet</h2><p>Start an agent in an Orca terminal.<br />Your Pokémon will appear here.</p></div>
     </main>
+    <div id="view-options" popover="auto" role="dialog" aria-labelledby="view-options-title">
+      <h2 id="view-options-title">Filter and sort</h2>
+      <label for="agent-filter">Status:</label>
+      <select id="agent-filter" disabled><option value="all">All statuses</option><option value="working">Working</option><option value="blocked">Needs help</option><option value="idle">Waiting / Done</option></select>
+      <label for="agent-sort">Sort:</label>
+      <select id="agent-sort" disabled><option value="manual">Manual</option><option value="attention">Needs attention first</option><option value="name">Name</option></select>
+    </div>
     <div id="species-panel" popover="manual" role="dialog" aria-label="Pokémon battle menu">
       <div id="battle-menu">
         <p id="battle-prompt"></p>

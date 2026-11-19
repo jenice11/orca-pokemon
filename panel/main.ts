@@ -60,6 +60,11 @@ const summary: HTMLElement = element('summary');
 const refreshButton: HTMLButtonElement = element('refresh');
 const motionButton: HTMLButtonElement = element('motion');
 const sortSelect: HTMLSelectElement = element('agent-sort');
+const filterSelect: HTMLSelectElement = element('agent-filter');
+const viewButton: HTMLButtonElement = element('view-options-button');
+const viewPanel: HTMLElement = element('view-options');
+const clearFilter: HTMLButtonElement = element('clear-filter');
+const activeFilterLabel: HTMLElement = element('active-filter-label');
 const orderAnnouncement: HTMLElement = element('order-announcement');
 const workspaceTooltip: HTMLElement = element('workspace-tooltip');
 const workspaceTooltipText: HTMLElement = element('workspace-tooltip-text');
@@ -101,10 +106,11 @@ let cardOrderWritable: boolean = false;
 let projectOrderWritable: boolean = false;
 let orderRevision: number = 0;
 let orderSaving: boolean = false;
-let orderSavePending: boolean = false;
-let orderDirty: boolean = false;
+const orderSavePending: Set<string> = new Set();
+const orderDirty: Set<string> = new Set();
 let orderReloadPending: boolean = false;
 let sortMode: SortMode = 'manual';
+let statusFilter: 'all' | 'working' | 'blocked' | 'idle' = 'all';
 let sortRequested: boolean = false;
 let dragged: Companion | undefined;
 let draggedProject: ProjectGroup | undefined;
@@ -306,7 +312,7 @@ function hideWorkspaceTooltip(): void {
 
 function showWorkspaceTooltip(companion: Companion): void {
   clearTimeout(tooltipDelay);
-  if (companion.disposed || dragged || draggedProject) return;
+  if (companion.disposed || companion.card.closest('[hidden]') || dragged || draggedProject) return;
   if (tooltipOwner !== companion) hideWorkspaceTooltip();
   tooltipOwner = companion;
   workspaceTooltipText.textContent = companion.row.agent;
@@ -337,7 +343,9 @@ function arrangeCards(resort: boolean = false): void {
   const projectKeys: string[] = orderedIds(items, manualOrder, 'manual').map((key: string): string => projects.get(byKey.get(key)!.row.projectId)!.storageKey);
   const previousProjectLength: number = projectOrder.length;
   projectOrder = reconcileOrder(projectOrder, projectKeys);
-  if ((manualOrder.length !== previousLength && cardOrderWritable) || (projectOrder.length !== previousProjectLength && projectOrderWritable)) void saveManualOrder();
+  const cardsChanged: boolean = manualOrder.length !== previousLength && cardOrderWritable;
+  const projectsChanged: boolean = projectOrder.length !== previousProjectLength && projectOrderWritable;
+  if (cardsChanged || projectsChanged) void saveManualOrder(cardsChanged, projectsChanged);
   const focused: HTMLElement | null = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const groups: ProjectGroup[] = Array.from(projects.values()).sort((a: ProjectGroup, b: ProjectGroup): number => projectOrder.indexOf(a.storageKey) - projectOrder.indexOf(b.storageKey));
   for (let groupIndex: number = 0; groupIndex < groups.length; groupIndex++) {
@@ -346,8 +354,6 @@ function arrangeCards(resort: boolean = false): void {
     const keys: string[] = sortMode === 'manual' || resort ? orderedIds(members, manualOrder, sortMode) : Array.from(group.list.children, (card: Element): string => (card as HTMLElement).dataset.orderKey!);
     if (list.children[groupIndex] !== group.section) list.insertBefore(group.section, list.children[groupIndex] ?? null);
     group.title.textContent = group.name;
-    group.count.textContent = String(members.length);
-    group.toggle.setAttribute('aria-label', `${group.name}, ${members.length} agent${members.length === 1 ? '' : 's'}`);
     group.grip.setAttribute('aria-label', `Rearrange ${group.name} project`);
     group.grip.disabled = false;
     group.grip.draggable = true;
@@ -361,11 +367,13 @@ function arrangeCards(resort: boolean = false): void {
     }
   }
   if (focused?.isConnected && document.activeElement !== focused) {
-    const restore: HTMLElement | null = focused instanceof HTMLButtonElement && focused.disabled ? focused.closest('.agent-card')?.querySelector('.species-picker') ?? null : focused;
-    restore?.focus({ preventScroll: true });
+    const restore: HTMLElement | null = focused.closest('[hidden]') ? viewButton : focused instanceof HTMLButtonElement && focused.disabled ? focused.closest('.agent-card')?.querySelector('.species-picker') ?? null : focused;
+    restore?.focus({ preventScroll: restore !== viewButton });
   }
   sortSelect.disabled = false;
+  filterSelect.disabled = viewButton.disabled = false;
   sortSelect.title = sortMode === 'manual' ? 'Drag agents within projects. Drag project grips to arrange groups.' : 'Sort applies within each project. Choose Manual to rearrange agents; Refresh reapplies this sort.';
+  updateVisibility();
 }
 
 async function loadManualOrder(): Promise<void> {
@@ -373,7 +381,7 @@ async function loadManualOrder(): Promise<void> {
   try {
     const [cardsRead, projectsRead]: PromiseSettledResult<unknown>[] = await Promise.allSettled([orca.host.call('storage.get', { key: orderKey }), orca.host.call('storage.get', { key: projectOrderKey })]);
     if (revision !== orderRevision) return;
-    if (dragged || draggedProject || orderDirty) { orderReloadPending = true; return; }
+    if (dragged || draggedProject || orderDirty.size) { orderReloadPending = true; return; }
     cardOrderWritable = cardsRead.status === 'fulfilled';
     projectOrderWritable = projectsRead.status === 'fulfilled';
     if (cardsRead.status === 'fulfilled') {
@@ -387,13 +395,13 @@ async function loadManualOrder(): Promise<void> {
     const missing: string[] = [];
     if (!cardOrderWritable) missing.push('agent');
     if (!projectOrderWritable) missing.push('project');
-    orderLoadError = missing.length ? `Could not load saved ${missing.join(' and ')} order. You can still rearrange here.` : '';
+    orderLoadError = missing.length ? `Could not load saved ${missing.join(' and ')} order. Moves stay local. Refresh to retry loading saved order.` : '';
   } catch {
     if (revision !== orderRevision) return;
     cardOrderWritable = projectOrderWritable = false;
-    orderLoadError = 'Could not load saved agent and project order. You can still rearrange here.';
+    orderLoadError = 'Could not load saved agent and project order. Moves stay local. Refresh to retry loading saved order.';
   } finally {
-    if (revision === orderRevision && !dragged && !draggedProject && !orderDirty) {
+    if (revision === orderRevision && !dragged && !draggedProject && !orderDirty.size) {
       orderLoaded = true;
       arrangeCards();
       paintError();
@@ -401,31 +409,29 @@ async function loadManualOrder(): Promise<void> {
   }
 }
 
-async function saveManualOrder(): Promise<void> {
-  orderSavePending = true;
-  orderDirty = true;
+async function saveManualOrder(cardsChanged: boolean, projectsChanged: boolean): Promise<void> {
+  if (cardsChanged && cardOrderWritable) { orderDirty.add(orderKey); orderSavePending.add(orderKey); }
+  if (projectsChanged && projectOrderWritable) { orderDirty.add(projectOrderKey); orderSavePending.add(projectOrderKey); }
   if (orderSaving) return;
+  for (const key of orderDirty) orderSavePending.add(key);
   orderSaving = true;
   try {
-    while (orderSavePending) {
-      orderSavePending = false;
+    while (orderSavePending.size) {
+      const key: string = orderSavePending.values().next().value!;
+      orderSavePending.delete(key);
+      const snapshot: string[] = (key === orderKey ? manualOrder : projectOrder).slice();
       try {
-        const cardsSnapshot: string[] = manualOrder.slice();
-        const projectsSnapshot: string[] = projectOrder.slice();
-        const writeCards: boolean = cardOrderWritable;
-        const writeProjects: boolean = projectOrderWritable;
-        if (writeCards) await orca.host.call('storage.set', { key: orderKey, value: cardsSnapshot });
-        if (writeProjects) await orca.host.call('storage.set', { key: projectOrderKey, value: projectsSnapshot });
-        if (!orderSavePending) orderDirty = false;
-        orderError = '';
+        await orca.host.call('storage.set', { key, value: snapshot });
+        if (!orderSavePending.has(key)) orderDirty.delete(key);
       } catch {
-        orderError = 'Agent order changed here but could not be saved. Move an agent again to retry.';
+        orderError = 'Order changed here but could not be saved. Move an agent or project again to retry.';
       }
+      if (!orderDirty.size) orderError = '';
       paintError();
     }
   } finally {
     orderSaving = false;
-    if (orderReloadPending && !dragged && !draggedProject && !orderDirty) { orderReloadPending = false; void loadManualOrder(); }
+    if (orderReloadPending && !dragged && !draggedProject && !orderDirty.size) { orderReloadPending = false; void loadManualOrder(); }
   }
 }
 
@@ -434,27 +440,27 @@ function finishDrag(): void {
   draggedProject = undefined;
   for (const companion of companions.values()) companion.card.classList.remove('dragging', 'drop-before', 'drop-after');
   for (const project of projects.values()) project.section.classList.remove('dragging', 'drop-before', 'drop-after');
-  if (orderReloadPending && !orderSaving && !orderDirty) { orderReloadPending = false; void loadManualOrder(); }
+  if (orderReloadPending && !orderSaving && !orderDirty.size) { orderReloadPending = false; void loadManualOrder(); }
 }
 
 function moveCompanion(source: Companion, target: Companion, after: boolean): void {
   if (!orderLoaded || sortMode !== 'manual' || source.disposed || target.disposed || source === target || source.row.projectId !== target.row.projectId) return;
   orderRevision++;
-  cardOrderWritable = true;
   manualOrder = moveOrder(manualOrder, source.storageKey, target.storageKey, after);
   arrangeCards();
-  orderAnnouncement.textContent = `${source.row.title} moved to position ${Array.from(source.card.parentElement!.children).indexOf(source.card) + 1} of ${source.card.parentElement!.children.length} in ${projects.get(source.row.projectId)!.name}.`;
-  void saveManualOrder();
+  const visible: Element[] = Array.from(source.card.parentElement!.children).filter((card: Element): boolean => !(card as HTMLElement).hidden);
+  orderAnnouncement.textContent = `${source.row.title} moved to position ${visible.indexOf(source.card) + 1} of ${visible.length} in ${projects.get(source.row.projectId)!.name}.`;
+  void saveManualOrder(true, false);
 }
 
 function moveProject(source: ProjectGroup, target: ProjectGroup, after: boolean): void {
   if (!orderLoaded || source.disposed || target.disposed || source === target) return;
   orderRevision++;
-  projectOrderWritable = true;
   projectOrder = moveOrder(projectOrder, source.storageKey, target.storageKey, after);
   arrangeCards();
-  orderAnnouncement.textContent = `${source.name} project moved to position ${Array.from(list.children).indexOf(source.section) + 1} of ${projects.size}.`;
-  void saveManualOrder();
+  const visible: Element[] = Array.from(list.children).filter((section: Element): boolean => !(section as HTMLElement).hidden);
+  orderAnnouncement.textContent = `${source.name} project moved to position ${visible.indexOf(source.section) + 1} of ${visible.length}.`;
+  void saveManualOrder(false, true);
 }
 
 function createProject(id: string, name: string, storageKey: string): ProjectGroup {
@@ -516,7 +522,7 @@ function createProject(id: string, name: string, storageKey: string): ProjectGro
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
     event.preventDefault();
     const direction: number = event.key === 'ArrowUp' ? -1 : 1;
-    const sections: Element[] = Array.from(list.children);
+    const sections: Element[] = Array.from(list.children).filter((section: Element): boolean => !(section as HTMLElement).hidden);
     const targetSection: Element | undefined = sections[sections.indexOf(section) + direction];
     const target: ProjectGroup | undefined = Array.from(projects.values()).find((item: ProjectGroup): boolean => item.section === targetSection);
     if (target) moveProject(project, target, direction > 0);
@@ -769,7 +775,7 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
     event.preventDefault();
     const direction: number = event.key === 'ArrowUp' ? -1 : 1;
-    const cards: Element[] = Array.from(card.parentElement!.children);
+    const cards: Element[] = Array.from(card.parentElement!.children).filter((item: Element): boolean => !(item as HTMLElement).hidden);
     const targetCard: Element | undefined = cards[cards.indexOf(card) + direction];
     const target: Companion | undefined = Array.from(companions.values()).find((item: Companion): boolean => item.card === targetCard);
     if (target) moveCompanion(companion, target, direction > 0);
@@ -821,10 +827,46 @@ function paintCompanion(companion: Companion, row: AgentRow): void {
   if (changed || !companion.sprite.style.backgroundImage) animateSprite(companion);
 }
 
-function updateSummary(): void {
+function updateVisibility(): void {
+  const focused: Element | null = document.activeElement;
+  let focusHidden: boolean = false;
+  let visible: number = 0;
+  for (const companion of companions.values()) {
+    companion.card.hidden = statusFilter !== 'all' && (statusFilter === 'idle'
+      ? companion.row.state !== 'waiting' && companion.row.state !== 'done'
+      : companion.row.state !== statusFilter);
+    if (!companion.card.hidden) { visible++; continue; }
+    if (companion.card.contains(focused) || (speciesOwner === companion && speciesPanel.contains(focused))) focusHidden = true;
+    if (speciesOwner === companion) closeSpecies();
+    if (tooltipOwner === companion) hideWorkspaceTooltip();
+  }
+  for (const project of projects.values()) {
+    const shown: number = Array.from(project.list.children).filter((card: Element): boolean => !(card as HTMLElement).hidden).length;
+    project.section.hidden = shown === 0;
+    if (project.section.hidden && project.section.contains(focused)) focusHidden = true;
+    project.count.textContent = statusFilter === 'all' ? String(project.list.children.length) : `${shown}/${project.list.children.length}`;
+    project.toggle.setAttribute('aria-label', `${project.name}, ${shown}${statusFilter === 'all' ? '' : ` of ${project.list.children.length}`} agent${shown === 1 ? '' : 's'}`);
+  }
+  if (dragged?.card.hidden || draggedProject?.section.hidden) finishDrag();
+  if (focusHidden) viewButton.focus();
+  element('filter-empty').hidden = companions.size === 0 || visible !== 0;
+  clearFilter.hidden = statusFilter === 'all';
+  const filterLabel: string = filterSelect.selectedOptions[0].textContent!;
+  if (activeFilterLabel.textContent !== filterLabel) activeFilterLabel.textContent = filterLabel;
+  clearFilter.title = clearFilter.ariaLabel = `Clear status filter: ${filterLabel}`;
+  viewButton.dataset.active = String(statusFilter !== 'all' || sortMode !== 'manual');
+  viewButton.title = `Filter and sort agents: ${filterSelect.selectedOptions[0].textContent}, ${sortSelect.selectedOptions[0].textContent}`;
   const blocked: number = [...companions.values()].filter((companion: Companion): boolean => companion.row.state === 'blocked').length;
-  const message: string = `${companions.size} companion${companions.size === 1 ? '' : 's'}${rosterStale ? ' · stale' : blocked ? ` · ${blocked} need${blocked === 1 ? 's' : ''} you` : ' · live'}`;
+  const count: string = statusFilter === 'all' ? String(companions.size) : `${visible}/${companions.size}`;
+  const message: string = `${count} companion${companions.size === 1 ? '' : 's'}${rosterStale ? ' · stale' : statusFilter !== 'all' ? '' : blocked ? ` · ${blocked} need${blocked === 1 ? 's' : ''} you` : ' · live'}`;
   if (summary.textContent !== message) summary.textContent = message;
+}
+
+function setStatusFilter(value: string): void {
+  statusFilter = value === 'working' || value === 'blocked' || value === 'idle' ? value : 'all';
+  filterSelect.value = statusFilter;
+  finishDrag();
+  updateVisibility();
 }
 
 async function refresh(): Promise<void> {
@@ -891,19 +933,19 @@ async function refresh(): Promise<void> {
     rosterStale = false;
     rosterError = '';
     paintError();
-    updateSummary();
     arrangeCards(sortRequested);
     if (focusedBeforeRefresh?.isConnected && document.activeElement !== focusedBeforeRefresh) {
       const group: ProjectGroup | undefined = Array.from(projects.values()).find((project: ProjectGroup): boolean => project.section.contains(focusedBeforeRefresh));
-      const restore: HTMLElement | null = group?.list.hidden ? group.toggle : focusedBeforeRefresh instanceof HTMLButtonElement && focusedBeforeRefresh.disabled ? focusedBeforeRefresh.closest('.agent-card')?.querySelector('.species-picker') ?? null : focusedBeforeRefresh;
-      restore?.focus({ preventScroll: true });
+      const restore: HTMLElement | null = focusedBeforeRefresh.closest('.agent-card[hidden], .project-group[hidden]') ? viewButton : group?.list.hidden ? group.toggle : focusedBeforeRefresh instanceof HTMLButtonElement && focusedBeforeRefresh.disabled ? focusedBeforeRefresh.closest('.agent-card')?.querySelector('.species-picker') ?? null : focusedBeforeRefresh;
+      restore?.focus({ preventScroll: restore !== viewButton });
     }
     sortRequested = false;
   } catch (error: unknown) {
     rosterStale = true;
     rosterError = error instanceof Error ? error.message : String(error);
     paintError();
-    summary.textContent = companions.size ? `${companions.size} companions · stale` : 'Roster unavailable';
+    if (companions.size) updateVisibility();
+    else if (summary.textContent !== 'Roster unavailable') summary.textContent = 'Roster unavailable';
   } finally {
     refreshing = false;
     refreshButton.disabled = false;
@@ -930,11 +972,22 @@ function statusChanged(payload: unknown): void {
   for (const companion of matches) {
     paintCompanion(companion, { ...companion.row, state });
   }
-  updateSummary();
+  updateVisibility();
   scheduleRefresh();
 }
 
 async function start(): Promise<void> {
+  viewPanel.addEventListener('toggle', (): void => {
+    const open: boolean = viewPanel.matches(':popover-open');
+    viewButton.setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    closeSpecies();
+    hideWorkspaceTooltip();
+    const anchor: DOMRect = viewButton.getBoundingClientRect();
+    viewPanel.style.left = `${Math.max(8, Math.min(anchor.right - viewPanel.offsetWidth, innerWidth - viewPanel.offsetWidth - 8))}px`;
+    viewPanel.style.top = `${Math.max(8, Math.min(anchor.bottom + 6, innerHeight - viewPanel.offsetHeight - 8))}px`;
+    filterSelect.focus({ preventScroll: true });
+  });
   const usageButton: HTMLButtonElement = element('usage-help');
   const usageTooltip: HTMLElement = element('usage-tooltip');
   let usageHideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -962,8 +1015,8 @@ async function start(): Promise<void> {
   list.addEventListener('click', (event: MouseEvent): void => {
     if (event.target instanceof Element && event.target.closest('.project-toggle')) closeSpecies();
   });
-  window.addEventListener('resize', (): void => { closeSpecies(speciesPanel.contains(document.activeElement)); });
-  document.addEventListener('visibilitychange', (): void => { closeSpecies(); });
+  window.addEventListener('resize', (): void => { closeSpecies(speciesPanel.contains(document.activeElement)); viewPanel.hidePopover(); });
+  document.addEventListener('visibilitychange', (): void => { closeSpecies(); viewPanel.hidePopover(); });
   list.parentElement!.addEventListener('scroll', hideWorkspaceTooltip);
   new ResizeObserver(hideWorkspaceTooltip).observe(list.parentElement!);
   list.addEventListener('pointerdown', hideWorkspaceTooltip);
@@ -976,11 +1029,26 @@ async function start(): Promise<void> {
     if (speciesOwner) { event.preventDefault(); closeSpecies(true); }
   });
   updateMotion();
-  refreshButton.addEventListener('click', (): void => { sortRequested = true; audioVisualizer?.refresh(); void refresh(); });
+  refreshButton.addEventListener('click', async (): Promise<void> => {
+    sortRequested = true;
+    audioVisualizer?.refresh();
+    if (!cardOrderWritable || !projectOrderWritable) {
+      refreshButton.disabled = true;
+      await loadManualOrder();
+    }
+    await refresh();
+  });
   sortSelect.addEventListener('change', (): void => {
     sortMode = sortSelect.value === 'attention' || sortSelect.value === 'name' ? sortSelect.value : 'manual';
     finishDrag();
     arrangeCards(true);
+  });
+  filterSelect.addEventListener('change', (): void => {
+    setStatusFilter(filterSelect.value);
+  });
+  clearFilter.addEventListener('click', (): void => {
+    setStatusFilter('all');
+    viewButton.focus();
   });
   motionButton.addEventListener('click', (): void => { paused = !paused; updateMotion(); });
   reducedMotion.addEventListener('change', (): void => { paused = reducedMotion.matches; updateMotion(); });
@@ -997,7 +1065,7 @@ async function start(): Promise<void> {
   orca.on('workspace.removed', scheduleRefresh);
   orca.storage.onDidChange((event: { key: string }): void => {
     if (event.key === orderKey || event.key === projectOrderKey) {
-      if (orderSaving || dragged || draggedProject || orderDirty) orderReloadPending = true;
+      if (orderSaving || dragged || draggedProject || orderDirty.size) orderReloadPending = true;
       else void loadManualOrder();
     }
     audioVisualizer?.preferenceChanged(event.key);

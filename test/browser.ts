@@ -120,7 +120,30 @@ export async function run(): Promise<string[]> {
       Math.abs(icon.top + icon.height / 2 - text.top - text.height / 2) <= 1,
     'Footer controls must keep 40px targets with icons beside their labels.');
   }
-  check(document.querySelector('.toolbar')!.contains(document.getElementById('agent-sort')) && document.querySelector('.toolbar')!.contains(button('motion')), 'Count, Sort, and Pause must share one toolbar.');
+  check(document.querySelector('.toolbar')!.contains(button('view-options-button')) && document.querySelector('.toolbar')!.contains(button('motion')), 'Count, Filter and sort, and Pause must share one toolbar.');
+  const summaryControl: HTMLElement = document.getElementById('summary')!;
+  const sortControl: HTMLSelectElement = document.getElementById('agent-sort') as HTMLSelectElement;
+  const originalSummary: string = summaryControl.textContent!;
+  const originalSort: string = sortControl.value;
+  check(document.getElementById('view-options')!.contains(sortControl) && sortControl.getClientRects().length === 0,
+    'Sort options must live in the closed popover, not reserve toolbar space.');
+  try {
+    for (const message of ['2 companions · live', '4 companions · 1 needs you', '100 companions · stale']) {
+      summaryControl.textContent = message;
+      for (const mode of ['manual', 'attention', 'name']) {
+        sortControl.value = mode;
+        const summaryBounds: DOMRect = summaryControl.getBoundingClientRect();
+        const sortBounds: DOMRect = button('view-options-button').getBoundingClientRect();
+        const motionBounds: DOMRect = button('motion').getBoundingClientRect();
+        const toolbarBounds: DOMRect = document.querySelector('.toolbar')!.getBoundingClientRect();
+        check(Math.abs(summaryBounds.top + summaryBounds.height / 2 - motionBounds.top - motionBounds.height / 2) <= 1 &&
+          Math.abs(sortBounds.top + sortBounds.height / 2 - motionBounds.top - motionBounds.height / 2) <= 1 &&
+          Math.abs(motionBounds.right - toolbarBounds.right) <= 1 && summaryBounds.right <= sortBounds.left &&
+          sortBounds.right <= motionBounds.left && toolbarBounds.height <= motionBounds.height + 1,
+        'Count, Filter and sort icon, and Pause must share exactly one row without overlaps or extra height.');
+      }
+    }
+  } finally { summaryControl.textContent = originalSummary; sortControl.value = originalSort; }
   check(document.getElementById('order-note') === null && document.querySelector('header > p') === null, 'Permanent help text and the header subtitle must not consume panel space.');
   const usageTooltip: HTMLElement = document.getElementById('usage-tooltip')!;
   check(usageTooltip.hasAttribute('popover') && !usageTooltip.matches(':popover-open') && usageTooltip.getClientRects().length === 0, 'Usage help must stay out of the layout until requested.');
@@ -477,6 +500,51 @@ export async function run(): Promise<string[]> {
   check(!removed.isConnected && removed.getAnimations().length === 0, 'Removed sprite must not restart after late storage read.');
   orca.host.call = call;
   passed.push('late storage response cannot revive removed sprite animations');
+
+  const otherProject: AgentRow = { ...fixture.agents[3] };
+  fixture.agents[3].projectId = 'order-write-project';
+  fixture.agents[3].projectName = 'Order write project';
+  await refresh();
+  await new Promise<number>(requestAnimationFrame);
+  const cardGrip: HTMLButtonElement = firstCard().querySelector('.drag-grip')!;
+  const moveDown: () => void = (): void => {
+    cardGrip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  };
+  let orderCallsStart: number = fixture.calls.length;
+  moveDown();
+  await new Promise<number>(requestAnimationFrame);
+  let orderWrites: string[] = fixture.calls.slice(orderCallsStart).filter((entry): boolean => entry.method === 'storage.set').map((entry): string => entry.params!.key);
+  check(orderWrites.length === 1 && orderWrites[0] === 'cards.order.v1', 'Moving a card must write only card order, never stale project order from another panel.');
+  const projectGrip: HTMLButtonElement = cardGrip.closest('.project-group')!.querySelector('.project-grip')!;
+  orderCallsStart = fixture.calls.length;
+  projectGrip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  await new Promise<number>(requestAnimationFrame);
+  orderWrites = fixture.calls.slice(orderCallsStart).filter((entry): boolean => entry.method === 'storage.set').map((entry): string => entry.params!.key);
+  check(orderWrites.length === 1 && orderWrites[0] === 'projects.order.v1', 'Moving a project must write only project order, never stale card order from another panel.');
+
+  let releaseOrder: (() => void) | undefined;
+  orca.host.call = async (method: string, params: unknown): Promise<unknown> => {
+    if (method === 'storage.set' && (params as { key: string }).key === 'cards.order.v1' && !releaseOrder) {
+      await new Promise<void>((resolve): void => { releaseOrder = resolve; });
+    }
+    return call(method, params);
+  };
+  orderCallsStart = fixture.calls.length;
+  moveDown();
+  await until((): boolean => releaseOrder !== undefined);
+  projectGrip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  cardGrip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  const expectedCardOrder: string[] = Array.from(cardGrip.closest('.project-agents')!.children, (card: Element): string => (card as HTMLElement).dataset.orderKey!);
+  releaseOrder!();
+  await new Promise<number>(requestAnimationFrame);
+  orca.host.call = call;
+  orderWrites = fixture.calls.slice(orderCallsStart).filter((entry): boolean => entry.method === 'storage.set').map((entry): string => entry.params!.key);
+  check(orderWrites.includes('cards.order.v1') && orderWrites.filter((key: string): boolean => key === 'projects.order.v1').length === 1, 'Serialized card saves must retain a pending project move without writing project order twice.');
+  const savedCards: { value: string[] } = await call('storage.get', { key: 'cards.order.v1' }) as { value: string[] };
+  check(JSON.stringify(savedCards.value.filter((key: string): boolean => expectedCardOrder.includes(key))) === JSON.stringify(expectedCardOrder), 'A card move queued during another save must persist the latest card order.');
+  fixture.agents[3] = otherProject;
+  await refresh();
+  passed.push('card and project order writes stay independent across serialized moves');
 
   const originalAgents: AgentRow[] = fixture.agents;
   fixture.agents = Array.from({ length: 20 }, (_: unknown, index: number): AgentRow => ({ ...originalAgents[0], id: `scroll-agent-${index}`, paneKey: `tab:scroll-${index}` }));

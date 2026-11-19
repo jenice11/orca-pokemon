@@ -24,6 +24,7 @@ const scenarios: Scenario[] = [
   { module: 'order-browser', method: 'runRaces' },
   { module: 'project-browser', method: 'run', reloadMethod: 'verifyReload' },
   { module: 'project-browser', method: 'runStatusIsolation' },
+  { module: 'view-browser', method: 'run' },
   { module: 'project-browser', method: 'verifyPartialReadFailure', query: '?fail-order-read=cards.order.v1' },
   { module: 'project-browser', method: 'verifyPartialReadFailure', query: '?fail-order-read=projects.order.v1' },
   { module: 'audio-browser', method: 'run' },
@@ -38,6 +39,13 @@ const cases: BrowserCase[] = scenarios.flatMap((scenario: Scenario): BrowserCase
       .map((reducedMotion: 'no-preference' | 'reduce'): BrowserCase => ({
         ...scenario, width, height: 760, textScale: 1, reducedMotion
       }))));
+for (const width of [260, 320, 480]) {
+  for (const height of [320, 400]) {
+    for (const textScale of [1, 2]) {
+      cases.push({ module: 'layout-browser', method: 'run', width, height, textScale, reducedMotion: 'no-preference' });
+    }
+  }
+}
 let browser: Browser | undefined;
 try {
   server.listen(0, '127.0.0.1');
