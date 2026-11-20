@@ -4,10 +4,6 @@
 
 [mathieucroset/herdr-pokemon-agents](https://github.com/mathieucroset/herdr-pokemon-agents) inspired the Pokémon companions, status-based animation, click-to-focus interaction, and species selection. The reference mod's code is MIT-licensed. Sprite files were obtained from SpriteCollab, not copied from the Herdr mod.
 
-## Orca adaptation
-
-[jenice11/orca-plugin](https://github.com/jenice11/orca-plugin) implements the Orca sidebar panel, CLI navigation bridge, persistent species choices, and local asset bundle. The integration follows Orca's installed plugin-authoring guide and documented APIs and CLI commands.
-
 ## Sprite artwork and metadata
 
 [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab) supplies the sprite sheets, animation metadata, and contributor records. Per-animation artist credits appear in [ATTRIBUTION.md](ATTRIBUTION.md), including **CHUNSOFT** for original game artwork. The bundle is pinned to commit [`13eb5a7733c5f5ba66031a2c5fb7bc67371d7310`](https://github.com/PMDCollab/SpriteCollab/commit/13eb5a7733c5f5ba66031a2c5fb7bc67371d7310).
