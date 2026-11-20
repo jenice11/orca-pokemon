@@ -9,6 +9,7 @@ A Pokémon companion panel for [Orca](https://www.onorca.dev/). Each live termin
 - **Saved species choices:** 22 Pokémon, with choices stored per workspace and pane identity.
 - **Offline sprites:** 69 bundled animation sheets; no runtime downloads, telemetry, or external requests.
 - **Accessible controls:** keyboard navigation, status labels, a motion toggle, and support for reduced-motion preferences.
+- **Idle animation savings:** hidden and collapsed companions pause their sprite animations without changing Spotify capture or the global motion choice.
 - **Spotify visualizer:** an optional spectrum display driven by Spotify desktop playback on supported Macs, with remembered explicit permission.
 
 “Done” reflects Orca's status; it does not prove the agent's task succeeded.

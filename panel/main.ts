@@ -485,6 +485,7 @@ function createProject(id: string, name: string, storageKey: string): ProjectGro
     hideWorkspaceTooltip();
     project.list.hidden = !project.list.hidden;
     project.toggle.setAttribute('aria-expanded', String(!project.list.hidden));
+    for (const companion of companions.values()) if (companion.row.projectId === id) syncSpriteMotion(companion);
   });
   project.grip.addEventListener('dragstart', (event: DragEvent): void => {
     if (!orderLoaded || project.disposed || !event.dataTransfer) { event.preventDefault(); return; }
@@ -606,7 +607,16 @@ function animateSprite(companion: Companion): void {
   if (frames.length > 1) {
     frames.push({ ...frames[frames.length - 1], offset: 1 });
     companion.animation = sprite.animate(frames, { duration: total * (turning || tumbling ? 4 : 1), iterations: Infinity });
+    syncSpriteMotion(companion);
   }
+}
+
+function syncSpriteMotion(companion: Companion): void {
+  const animation: Animation | null = companion.animation;
+  if (!animation) return;
+  const hidden: boolean = paused || document.hidden || companion.card.closest('[hidden]') !== null;
+  if (hidden && animation.playState === 'running') animation.pause();
+  else if (!hidden && animation.playState === 'paused') animation.play();
 }
 
 function updateMotion(): void {
@@ -847,6 +857,7 @@ function updateVisibility(): void {
     project.count.textContent = statusFilter === 'all' ? String(project.list.children.length) : `${shown}/${project.list.children.length}`;
     project.toggle.setAttribute('aria-label', `${project.name}, ${shown}${statusFilter === 'all' ? '' : ` of ${project.list.children.length}`} agent${shown === 1 ? '' : 's'}`);
   }
+  for (const companion of companions.values()) syncSpriteMotion(companion);
   if (dragged?.card.hidden || draggedProject?.section.hidden) finishDrag();
   if (focusHidden) viewButton.focus();
   element('filter-empty').hidden = companions.size === 0 || visible !== 0;
@@ -1073,7 +1084,11 @@ async function start(): Promise<void> {
       if ((companion.storageKey === event.key || `${companion.storageKey}.work` === event.key) && !companion.saving) void loadChoice(companion);
     }
   });
-  document.addEventListener('visibilitychange', (): void => { hideWorkspaceTooltip(); if (!document.hidden) scheduleRefresh(); });
+  document.addEventListener('visibilitychange', (): void => {
+    hideWorkspaceTooltip();
+    for (const companion of companions.values()) syncSpriteMotion(companion);
+    if (!document.hidden) scheduleRefresh();
+  });
   await loadManualOrder();
   await refresh();
 }

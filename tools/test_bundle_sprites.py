@@ -44,7 +44,7 @@ const source = fs.readFileSync('panel/main.ts', 'utf8');
 const renderer = source.slice(source.indexOf('function animateSprite('), source.indexOf('function updateMotion('));
 const metadata = fs.readFileSync('panel/sprites.ts', 'utf8');
 const pokemon = JSON.parse(metadata.split('export const POKEMON: Pokemon[] = ')[1].trim().replace(/;$/, ''));
-const context = vm.createContext({ paused: true });
+const context = vm.createContext({ paused: true, document: { hidden: false } });
 vm.runInContext(ts.transpileModule(renderer, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
 const rendered = {};
 for (const species of pokemon) {
@@ -61,7 +61,7 @@ console.log(JSON.stringify(rendered));
 context.paused = false;
 for (const species of pokemon) {
   let captured;
-  const companion = { row: { state: 'working' }, dialogue: {}, species, sprite: {
+  const companion = { row: { state: 'working' }, dialogue: {}, species, card: { closest() { return null; } }, sprite: {
     style: {}, dataset: {}, animate(frames, options) { captured = { frames, options }; return { cancel() {} }; }
   } };
   context.animateSprite(companion);
@@ -80,7 +80,7 @@ for (const species of pokemon) {
 }
 const pikachu = pokemon.find(species => species.id === 25);
 let tumble;
-context.animateSprite({ row: { state: 'working' }, dialogue: {}, species: pikachu, workAnimation: 'tumbleback', sprite: {
+context.animateSprite({ row: { state: 'working' }, dialogue: {}, species: pikachu, workAnimation: 'tumbleback', card: { closest() { return null; } }, sprite: {
   style: {}, dataset: {}, animate(frames, options) { tumble = { frames, options }; return { cancel() {} }; }
 } });
 if (tumble.options.duration !== 3600 || tumble.frames.length !== 19) throw new Error('Wrong tumble timing');

@@ -328,5 +328,52 @@ export async function run(): Promise<string[]> {
   check(document.activeElement === view && focusBounds.top >= 0 && focusBounds.bottom <= innerHeight, 'Hiding an offscreen focused owner must restore visible focus to the view icon.');
   select('agent-filter', 'all');
   passed.push('scroll-clamped filtering keeps options open and hidden offscreen owners restore visible icon focus');
+  const sprite: HTMLElement = owner.querySelector('.sprite')!;
+  const toggle: HTMLButtonElement = main.querySelector('.project-toggle')!;
+  const motion: HTMLButtonElement = element('motion');
+  const audioCalls: () => string[] = (): string[] => fixture.calls
+    .filter((call: { name?: string }): boolean => call.name === 'audio.start' || call.name === 'audio.stop')
+    .map((call: { name?: string }): string => call.name!);
+  const beforeMotionAudio: string[] = audioCalls();
+  await until((): boolean => sprite.getAnimations().length > 0);
+  check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'running'), 'Visible sprites must start running when global motion is enabled.');
+  for (const hiddenBy of ['filter', 'collapse']) {
+    if (hiddenBy === 'filter') select('agent-filter', 'idle');
+    else toggle.click();
+    check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'paused'), `${hiddenBy} must pause hidden sprite WAAPI animations.`);
+    const previous: Animation = sprite.getAnimations()[0];
+    await orca.host.call('storage.set', { key: owner.dataset.orderKey!, value: hiddenBy === 'filter' ? 25 : 133 });
+    await until((): boolean => sprite.getAnimations().length > 0 && sprite.getAnimations()[0] !== previous);
+    check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'paused'), `Species reload while hidden by ${hiddenBy} must create paused animations.`);
+    if (hiddenBy === 'filter') clear.click();
+    else toggle.click();
+    check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'running'), `Clearing ${hiddenBy} must resume visible sprite animations.`);
+  }
+  const hiddenDescriptor: PropertyDescriptor | undefined = Object.getOwnPropertyDescriptor(document, 'hidden');
+  let pageHidden: boolean = true;
+  try {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: (): boolean => pageHidden });
+    document.dispatchEvent(new Event('visibilitychange'));
+    check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'paused'), 'Hidden documents must pause sprite animations.');
+    pageHidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'running'), 'Visible documents must resume eligible sprites.');
+  } finally {
+    if (hiddenDescriptor) Object.defineProperty(document, 'hidden', hiddenDescriptor);
+    else Reflect.deleteProperty(document, 'hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+  motion.click();
+  check(motion.getAttribute('aria-pressed') === 'true', 'Global pause must be active for visibility regression.');
+  select('agent-filter', 'idle');
+  clear.click();
+  check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'paused'), 'Clearing a filter during global pause must not resume sprites.');
+  toggle.click();
+  toggle.click();
+  check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'paused'), 'Expanding a group during global pause must not resume sprites.');
+  motion.click();
+  check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'running'), 'Explicit resume must restart visible sprites after filtering and collapse.');
+  check(same(audioCalls(), beforeMotionAudio), 'Filter, collapse, species reload and global motion controls must not start or stop audio capture.');
+  passed.push('hidden sprites pause, hidden species reload stays paused, clear/expand respects global pause, and audio lifecycle stays unchanged');
   return passed;
 }
