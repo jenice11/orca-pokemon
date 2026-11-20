@@ -84,6 +84,7 @@ export async function run(): Promise<string[]> {
   const clear: HTMLButtonElement = element('clear-filter');
   const active: HTMLElement = element('active-filter-label');
   const refreshButton: HTMLButtonElement = element('refresh');
+  check(refreshButton.getAttribute('aria-label') === 'Refresh' && refreshButton.querySelector('svg') && !refreshButton.textContent!.trim(), 'Refresh must retain its handler ID and expose an accessible icon only.');
   check(clear.hidden && clear.closest('.toolbar-actions') && clear.contains(active) && clear.querySelector('svg'), 'All statuses must hide the toolbar clear button with its status label and close icon.');
   check(clear.getAttribute('aria-label')?.toLowerCase().includes('clear'), 'Clear filter must have an explicit accessible name.');
   check(view.querySelector('svg') && !view.textContent!.trim() && view.getAttribute('aria-label'), 'View options must use an accessible icon without a text toolbar row.');

@@ -82,7 +82,7 @@ export async function run(): Promise<string[]> {
     label.textContent === 'Needs help' && clear.querySelector('svg[aria-hidden="true"]'), 'Active clear chip must remain named with its selected status and decorative close icon.');
   check(summary.getAttribute('role') === 'status' && summary.textContent === '12/24 companions · stale', 'Stale summary must remain accessible without repeating selected status.');
   check(!error.hidden && error.getAttribute('role') === 'alert' && error.textContent!.length > 0, 'Roster errors must remain accessible with an active chip.');
-  for (const selector of ['#usage-help']) {
+  for (const selector of ['#usage-help', '#refresh']) {
     const button: HTMLButtonElement = element(selector);
     const bounds: DOMRect = button.getBoundingClientRect();
     check(bounds.width === 32 && (parseFloat(getComputedStyle(button).fontSize) > 13 ? bounds.height >= 32 : bounds.height === 32), `${selector} header icon must retain its original 32px size, allowing enlarged text to grow vertically.`);
