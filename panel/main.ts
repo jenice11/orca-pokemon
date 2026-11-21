@@ -810,14 +810,33 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
   return companion;
 }
 
+function agentBrand(agent: string): string {
+  const name: string = agent.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+  if (name.includes('claude')) return 'claude';
+  if (name.includes('codex') || name.includes('openai')) return 'codex';
+  if (name.includes('opencode')) return 'opencode';
+  if (name.includes('gemini')) return 'gemini';
+  if (name.includes('github copilot') || name.includes('copilot')) return 'copilot';
+  if (name.includes('cursor')) return 'cursor';
+  if (name.includes('kilo') || name.includes('kilocode')) return 'kilocode';
+  if (name.includes('roo code') || name.includes('roocode')) return 'roocode';
+  if (name.includes('windsurf')) return 'windsurf';
+  if (name.includes('cline')) return 'cline';
+  if (name.split(' ').includes('amp')) return 'amp';
+  if (name.includes('devin')) return 'devin';
+  if (name.includes('trae')) return 'trae';
+  if (name.includes('zencoder')) return 'zencoder';
+  if (name.includes('lovable')) return 'lovable';
+  return 'unknown';
+}
+
 function paintCompanion(companion: Companion, row: AgentRow): void {
   const changed: boolean = companion.row.state !== row.state;
   companion.row = row;
   companion.card.dataset.state = row.state;
   companion.title.textContent = row.title;
   companion.title.title = row.title;
-  const agent: string = row.agent.trim().toLowerCase();
-  companion.agentBadge.dataset.agent = agent === 'claude' || agent === 'codex' || agent === 'opencode' ? agent : 'unknown';
+  companion.agentBadge.dataset.agent = agentBrand(row.agent);
   companion.agentBadge.setAttribute('aria-label', `${row.agent} agent details`);
   if (tooltipOwner === companion) showWorkspaceTooltip(companion);
   companion.status.textContent = labels[row.state];
@@ -1089,6 +1108,8 @@ async function start(): Promise<void> {
     for (const companion of companions.values()) syncSpriteMotion(companion);
     if (!document.hidden) scheduleRefresh();
   });
+  window.addEventListener('focus', scheduleRefresh);
+  window.addEventListener('pageshow', scheduleRefresh);
   await loadManualOrder();
   await refresh();
 }

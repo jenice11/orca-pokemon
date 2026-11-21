@@ -90,6 +90,11 @@ export async function run(): Promise<string[]> {
   await until((): boolean => document.querySelectorAll('.agent-card').length === 4 && !select().disabled);
   await orca.host.call('storage.set', { key: 'cards.order.v1', value: [] });
   await until((): boolean => firstCard().querySelector('h2')!.textContent === fixture.agents[0].title);
+  for (const event of ['focus', 'pageshow']) {
+    const rosterCalls: number = fixture.calls.filter((call): boolean => call.name === 'roster').length;
+    window.dispatchEvent(new Event(event));
+    await until((): boolean => fixture.calls.filter((call): boolean => call.name === 'roster').length > rosterCalls);
+  }
   const liveDialogue: HTMLElement = firstCard().querySelector('.companion-dialogue')!;
   check(liveDialogue.getAttribute('role') === 'status' && liveDialogue.getAttribute('aria-live') === 'polite' &&
     liveDialogue.getAttribute('aria-atomic') === 'true', 'Dialogue changes must expose a polite, complete status announcement.');
@@ -208,6 +213,33 @@ export async function run(): Promise<string[]> {
     check(workspaceTooltip.hidden, 'Changing Spotify height must dismiss stale tooltip geometry before it can overlap the dock.');
   }
   dock.style.height = previousHeight;
+  const brandAgents: [string, string][] = [
+    ['Claude Code', 'claude'],
+    ['OpenAI Codex', 'codex'],
+    ['OpenCode', 'opencode'],
+    ['Gemini CLI', 'gemini'],
+    ['GitHub Copilot', 'copilot'],
+    ['Cursor', 'cursor'],
+    ['Amp', 'amp'],
+    ['Cline', 'cline'],
+    ['Kilo Code', 'kilocode'],
+    ['Roo Code', 'roocode'],
+    ['Windsurf', 'windsurf'],
+    ['Devin', 'devin'],
+    ['Trae', 'trae'],
+    ['Zencoder', 'zencoder'],
+    ['Lovable', 'lovable']
+  ];
+  for (const [agentName, brand] of brandAgents) {
+    fixture.agents[0].agent = agentName;
+    await refresh();
+    const mark: HTMLElement = firstCard().querySelector('.agent-icon')!;
+    check(mark.dataset.agent === brand, `${agentName} must use the ${brand} brand mark.`);
+    check(getComputedStyle(mark, '::before').maskImage.includes(`/assets/agents/${brand}.svg`), `${brand} must use a local theme-aware SVG mask.`);
+  }
+  fixture.agents[0].agent = 'Example';
+  await refresh();
+  check(firstCard().querySelector<HTMLElement>('.agent-icon')!.dataset.agent === 'unknown', 'Unknown agent names containing "amp" must keep the neutral fallback.');
   fixture.agents[0].workspace = originalWorkspace;
   fixture.agents[0].agent = originalAgent;
   fixture.agents[0].title = originalTitle;
@@ -218,11 +250,15 @@ export async function run(): Promise<string[]> {
   for (const card of Array.from(document.querySelectorAll<HTMLElement>('.agent-card'))) {
     const mark: HTMLElement = card.querySelector('.agent-icon')!;
     const brand: string = mark.dataset.agent!;
-    check(['claude', 'codex', 'opencode'].includes(brand), 'Known fixture agents must use their own brand marks.');
+    check(['claude', 'codex', 'opencode', 'amp', 'cline', 'copilot', 'cursor', 'devin', 'gemini', 'kilocode', 'lovable', 'roocode', 'trae', 'windsurf', 'zencoder'].includes(brand), 'Known fixture agents must use their own brand marks.');
     check(getComputedStyle(mark, '::before').maskImage.includes(`/assets/agents/${brand}.svg`), 'Brand mark must use a local, theme-aware SVG mask.');
     const iconImage: HTMLImageElement = new Image();
     iconImage.src = new URL(`../assets/agents/${brand}.svg`, import.meta.url).href;
     await iconImage.decode();
+    if (brand === 'copilot') {
+      const iconSource: string = await (await fetch(iconImage.src)).text();
+      check(iconSource.includes('<title>GithubCopilot</title>'), 'Copilot must use the GitHub Copilot mark.');
+    }
     const badge: HTMLElement = card.querySelector('.state')!;
     const style: CSSStyleDeclaration = getComputedStyle(badge);
     check(style.width === '10px' && style.height === '10px' && style.borderRadius === '50%', 'Every agent state must use a circle.');

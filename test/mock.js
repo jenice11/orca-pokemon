@@ -18,7 +18,7 @@ window.fixture = {
     id: `fixture-${index}`, workspaceId: 'fixture-workspace', workspace: 'Companion lab',
     projectId: JSON.stringify(['local', 'repo', 'fixture-repo']), projectName: 'Companion lab',
     paneKey: `tab:${index}`, title: ['Implement auth', 'Review changes', 'Plan migration', 'Write tests'][index],
-    agent: ['Claude', 'Codex', 'OpenCode', 'Claude'][index], state
+    agent: ['Claude', 'Codex', 'OpenCode', 'Cursor'][index], state
   })),
   emit(event, payload) { for (const listener of listeners.get(event) ?? []) listener(payload); },
   post(event, payload) {
