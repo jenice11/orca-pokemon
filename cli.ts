@@ -16,17 +16,27 @@ function executable(): string {
     ];
     for (const candidate of candidates) if (existsSync(candidate)) return candidate;
   }
+  if (process.platform === 'win32') {
+    const localAppData: string = process.env.LOCALAPPDATA ?? resolve(homedir(), 'AppData', 'Local');
+    const candidate: string = resolve(localAppData, 'Programs', 'orca', 'resources', 'bin', 'orca.exe');
+    if (existsSync(candidate)) return candidate;
+  }
   return process.platform === 'linux' ? 'orca-ide' : 'orca';
 }
 
 export async function callCli(args: readonly string[]): Promise<unknown> {
   const command: string = executable();
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (process.platform === 'win32' && !env.ORCA_USER_DATA_PATH) {
+    env.ORCA_USER_DATA_PATH = resolve(env.APPDATA ?? resolve(homedir(), 'AppData', 'Roaming'), 'orca');
+  }
   return new Promise<unknown>((resolveResult, reject): void => {
-    execFile(command, [...args, '--json'], {
+    execFile(command, [...args, '--environment', 'local', '--json'], {
       timeout: 15000,
       maxBuffer: 16 * 1024 * 1024,
-      windowsHide: true
-    }, (error: ExecFileException | null, stdout: string): void => {
+      windowsHide: true,
+      env
+    }, (error: ExecFileException | null, stdout: string, stderr: string): void => {
       try {
         const response: Record<string, unknown> = record(JSON.parse(stdout));
         if (response.ok !== true || error) {
@@ -36,9 +46,13 @@ export async function callCli(args: readonly string[]): Promise<unknown> {
         }
         resolveResult(response.result);
       } catch {
-        reject(new Error(error ?
-          `Orca CLI ${command} failed (${String(error.code ?? 'timeout')}). Check its installation and PATH.` :
-          'Orca CLI returned invalid JSON. Update Orca and try again.'));
+        if (error) {
+          const diagnostic: string = stderr.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 300);
+          const reason: string = String(error.code ?? 'timeout');
+          reject(new Error(`Orca CLI ${command} failed (${reason})${diagnostic ? `: ${diagnostic}` : '. Check its installation and PATH.'}`));
+          return;
+        }
+        reject(new Error('Orca CLI returned invalid JSON. Update Orca and try again.'));
       }
     });
   });
