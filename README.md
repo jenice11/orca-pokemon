@@ -2,58 +2,46 @@
 
 A Pokémon companion panel for [Orca](https://www.onorca.dev/). Each live terminal agent gets a sprite that reflects its status. Click a Pokémon to focus its agent, or search for a different species from its Poké Ball.
 
+<p>
+  <a href="https://orca.dev"><img src="https://img.shields.io/badge/Orca-1.4.250%2B-49c4a7" alt="Orca 1.4.250 or newer"></a>
+</p>
+
+## Install
+
+Requires **Orca desktop 1.4.250 or newer**, with plugins enabled.
+
+1. Open **Settings → Plugins**.
+2. Choose **Add plugin → From a Git URL…** and enter:
+
+   ```text
+   https://github.com/jenice11/orca-pokemon
+   ```
+
+   The plugin is not in Orca's catalog yet; this installs it directly from Git. Orca resolves the default branch and pins the installed copy to that commit, so it will not automatically follow later branch changes.
+3. Review the requested access before approving. Pokémon Agents runs as a **trusted Node worker with your user account's machine access**, not as a sandboxed panel. It requests workspace read/write, agent read, and plugin-owned storage access.
+4. Open **Pokémon Agents** from the right sidebar.
+
+No Node.js, npm, or build step is needed to install or use the plugin. The Spotify helper is bundled for Apple Silicon Macs.
+
+The worker checks standard macOS app locations and the standard Windows Orca install path when the GUI's `PATH` does not include the CLI. Native rendering and terminal focus have been verified on macOS. Windows, Linux, and SSH navigation have not been live-tested.
+
+## Available Pokemon
+
+Bulbasaur, Charmander, Squirtle, Pikachu, Jigglypuff, Meowth, Psyduck, Gengar, Cubone, Eevee, Snorlax, Dragonite, Mew, Pichu, Togepi, Suicune, Piplup, Sylveon, Rowlet, Mimikyu, Scorbunny, and Yamper.
+
 ## Features
 
-- **Live status animations:** walking while working (Pikachu uses 4× slower Shock, turning in place once through each of eight directions), an attention hop when blocked, idle breathing while waiting, and sleeping when done.
-- **Click-to-focus:** switches to the exact agent terminal using a freshly resolved Orca terminal handle.
-- **Saved species choices:** 22 Pokémon, with choices stored per workspace and pane identity.
-- **Offline sprites:** 69 bundled animation sheets; no runtime downloads, telemetry, or external requests.
-- **Accessible controls:** keyboard navigation, status labels, a motion toggle, and support for reduced-motion preferences.
-- **Idle animation savings:** hidden and collapsed companions pause their sprite animations without changing Spotify capture or the global motion choice.
-- **Spotify visualizer:** an optional spectrum display driven by Spotify desktop playback on supported Macs, with remembered explicit permission.
+| Feature | Behavior |
+| --- | --- |
+| Live companions | Status-driven animations for working, blocked, waiting, and done terminal agents |
+| Click to focus | Switches to the exact agent terminal using a freshly resolved Orca handle |
+| 22 Pokémon | Pick a species per workspace and pane; Pikachu also has Walk, Shock, and Tumble work animations |
+| Project controls | Group, filter, sort, collapse, and manually reorder agents and projects |
+| Accessible controls | Keyboard navigation, status labels, a motion toggle, and reduced-motion support |
+| Offline sprites | 69 bundled animation sheets; no runtime downloads, telemetry, or external requests |
+| Spotify visualizer | Optional; requires Spotify desktop on macOS 26+ with Apple Silicon and explicit permission |
 
 “Done” reflects Orca's status; it does not prove the agent's task succeeded.
-
-## Requirements
-
-- Orca **1.4.250 or newer**, with plugins enabled.
-- Orca's CLI available to the plugin worker. The worker checks standard macOS app locations when the GUI's PATH does not include `orca`.
-- Optional Spotify visualization requires **macOS 26+ on Apple Silicon**, Spotify desktop playing on this Mac, and system-audio recording permission. The bundled helper targets Apple Silicon.
-
-Native rendering and terminal focus have been verified on macOS. Windows, Linux, and SSH navigation have not been live-tested.
-
-## Install locally
-
-Clone this repository and inspect the requested access:
-
-```sh
-git clone https://github.com/jenice11/orca-plugin.git
-cd orca-plugin
-orca plugin validate . --json
-orca plugin inspect . --json
-```
-
-Load the plugin folder:
-
-```sh
-orca plugin dev load . --json
-```
-
-Orca returns an approval fingerprint and the exact command needed to approve it. **Review the access before running that command. Agents must ask the user before approving plugin permissions.** Do not reuse a fingerprint from another plugin or version.
-
-After approval, open the panel:
-
-```sh
-orca plugin open local.pokemon-agents --panel pokemon-agents --json
-```
-
-No npm installation is needed. The Spotify helper is bundled for Apple Silicon Macs. This local loading mode hot-reloads the folder: later code edits run under its existing approval unless the requested access changes.
-
-To unload the plugin:
-
-```sh
-orca plugin dev unload . --json
-```
 
 ## Use
 
@@ -61,8 +49,6 @@ orca plugin dev unload . --json
 2. Click its Pokémon, or use Tab and Enter, to focus the terminal.
 3. Click the Poké Ball in the sprite area's lower-left corner, then choose Pokémon to search names (case-insensitive). The current species is marked. Use Arrow Up/Down and Enter to choose, or Escape to close. Choosing saves immediately, updates the sprite, closes the picker, and returns focus to the Poké Ball. Right-clicking the Pokémon opens search directly. Failed saves keep the previous species, show an error, and leave search usable. Clicking outside dismisses without taking focus.
 4. Use **Pause** to stop animations, or **Refresh** to reconcile the roster and refresh permitted Spotify capture.
-
-Available species: Bulbasaur, Charmander, Squirtle, Pikachu, Jigglypuff, Meowth, Psyduck, Gengar, Cubone, Eevee, Snorlax, Dragonite, Mew, Pichu, Togepi, Suicune, Piplup, Sylveon, Rowlet, Mimikyu, Scorbunny, and Yamper.
 
 The Poké Ball opens a battle-style popup. Choose **Pokémon** to search species, or **Work** to choose Pikachu's Walk/Shock/Tumble work animation. Work is currently available for Pikachu only. Arrow keys move the cursor; Enter chooses an option. Escape closes the popup. A successful choice saves and closes the popup; failures keep it open for retry. Tumble plays left to right, then TumbleBack plays right to left, looping every 3.6 seconds. The work animation choice saves per agent; Shock remains the default. Other Pokémon keep their existing walking animation.
 
@@ -124,9 +110,41 @@ The plugin does not submit terminal input, launch agents, access the microphone,
 - The panel uses Orca's right sidebar. Orca 1.4.250 cannot stack Explorer above it.
 - The CLI bridge depends on Orca's response formats. See [API verification](API-VERIFICATION.md) for the checked contracts.
 
-## Development checks
+## Development
 
-Installing the plugin does not require npm. For development checks:
+<details>
+<summary>Local setup and validation</summary>
+
+Clone this repository and inspect the requested access:
+
+```sh
+git clone https://github.com/jenice11/orca-pokemon.git
+cd orca-pokemon
+orca plugin validate . --json
+orca plugin inspect . --json
+```
+
+Load the folder as a development plugin:
+
+```sh
+orca plugin dev load . --json
+```
+
+Orca returns an approval fingerprint and the exact command needed to approve it. Review the access before approving; agents must ask the user before approving plugin permissions. Do not reuse a fingerprint from another plugin or version.
+
+After approval, open the panel:
+
+```sh
+orca plugin open local.pokemon-agents --panel pokemon-agents --json
+```
+
+This local loading mode hot-reloads the folder: later code edits run under its existing approval unless the requested access changes. To unload it:
+
+```sh
+orca plugin dev unload . --json
+```
+
+For development checks:
 
 ```sh
 npm ci
@@ -140,6 +158,8 @@ The browser command starts its own loopback fixture server on an available port 
 Targeted layout checks also cover 320/400 px heights and doubled text sizes, not OS or browser zoom.
 
 Live-region tests verify announcement text and suppress unchanged refresh updates. They do not verify spoken output from VoiceOver or another screen reader.
+
+</details>
 
 ## Credits and asset rights
 
