@@ -1,4 +1,4 @@
-import { AUDIO_BANDS, audioFrame, audioStatus, type AudioFrame, type AudioStatus } from '../audio-protocol.ts';
+import { AUDIO_BANDS, audioCapabilities, audioFrame, audioStatus, type AudioCapabilities, type AudioFrame, type AudioStatus } from '../audio-protocol.ts';
 import { POKEMON, type Pokemon, type SpriteAnimation } from './sprites.ts';
 
 export interface AudioBridge {
@@ -13,11 +13,12 @@ export interface AudioVisualizer {
   dispose(): void;
 }
 
-export interface AudioPreferenceHost {
+interface AudioPreferenceHost {
   call(method: string, params: unknown): Promise<unknown>;
 }
 
 const autoStartKey: string = 'audio.autostart.v1';
+const allAppsAutoStartKey: string = 'audio.all-app-autostart.v1';
 
 export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boolean, host: AudioPreferenceHost): AudioVisualizer {
   const card: HTMLElement = document.getElementById('audio-card')!;
@@ -44,6 +45,11 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   let idleAnimation: Animation | undefined;
   const enable: HTMLButtonElement = document.getElementById('audio-enable') as HTMLButtonElement;
   const disable: HTMLButtonElement = document.getElementById('audio-disable') as HTMLButtonElement;
+  const enableLabel: HTMLElement = document.getElementById('audio-enable-label')!;
+  const disableLabel: HTMLElement = document.getElementById('audio-disable-label')!;
+  const audioTitle: HTMLElement = document.getElementById('audio-title')!;
+  const consentTitle: HTMLElement = document.getElementById('audio-consent-title')!;
+  const consentDescription: HTMLElement = document.getElementById('audio-consent-description')!;
   const consent: HTMLDialogElement = document.getElementById('audio-consent') as HTMLDialogElement;
   const consentError: HTMLElement = document.getElementById('audio-consent-error')!;
   const allow: HTMLButtonElement = document.getElementById('audio-allow') as HTMLButtonElement;
@@ -61,7 +67,10 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   let staleFrame: ReturnType<typeof setTimeout> | undefined;
   let automaticStartPending: boolean = false;
   let captureRefresh: 'stopping' | 'starting' | null = null;
+  let captureScope: AudioCapabilities['scope'] = 'unsupported';
+  let captureUnavailableMessage: string = '';
   let savedAutoStart: boolean = false;
+  let captureScopeReady: boolean = false;
   let startupCancelled: boolean = false;
   let preferenceVersion: number = 0;
   let preferenceSaving: boolean = false;
@@ -72,11 +81,48 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   let receivedFrame: boolean = false;
   let audible: boolean = false;
 
+  function hasPermission(): boolean {
+    return savedAutoStart && (captureScope === 'spotify' || captureScope === 'all-app');
+  }
+
+  function preferenceKey(): string {
+    return captureScope === 'all-app' ? allAppsAutoStartKey : autoStartKey;
+  }
+
+  function configureCaptureScope(): void {
+    if (captureScope === 'all-app') {
+      enable.setAttribute('aria-label', 'Allow all-app audio visualizer');
+      enable.title = 'Turn on all-app audio visualizer';
+      disable.setAttribute('aria-label', 'Disable all-app visualizer');
+      disable.title = 'Turn off all-app audio visualizer';
+      enableLabel.textContent = disableLabel.textContent = 'All apps';
+      audioTitle.textContent = 'All-app audio';
+      display.setAttribute('aria-label', 'All-app output frequency spectrum');
+      consentTitle.textContent = 'Allow all-app audio capture?';
+      consentDescription.textContent = 'The visualizer analyzes audio from all apps and system sounds played through your default output. Audio stays in memory; nothing is saved or uploaded, and your microphone is not used.';
+      allow.textContent = 'Allow';
+      cancel.textContent = 'No';
+      return;
+    }
+    enable.setAttribute('aria-label', 'Allow Spotify visualizer');
+    enable.title = 'Turn on Spotify visualizer';
+    disable.setAttribute('aria-label', 'Disable visualizer');
+    disable.title = 'Turn off Spotify visualizer';
+    enableLabel.textContent = disableLabel.textContent = 'Spotify';
+    audioTitle.textContent = 'Spotify';
+    display.setAttribute('aria-label', 'Spotify output frequency spectrum');
+    consentTitle.textContent = 'Allow automatic audio capture?';
+    consentDescription.textContent = 'This panel will analyze audio output now and on future opens or reloads, without asking again. Capture is limited to Spotify on macOS and to Spotify and its child processes on supported Windows releases. Audio stays in memory; no microphone, saved audio, or uploads. macOS audio permission is still required.';
+    allow.textContent = 'Allow';
+    cancel.textContent = 'No';
+  }
+
   function paintPermission(): void {
-    card.hidden = !savedAutoStart || !preferenceVerified;
+    card.hidden = !hasPermission() || !preferenceVerified;
     disable.hidden = !savedAutoStart && status.session !== session;
     enable.hidden = !disable.hidden;
-    enable.disabled = disable.disabled = allow.disabled = cancel.disabled = preferenceSaving || !initialized;
+    enable.disabled = preferenceSaving || !initialized || captureScope === 'unsupported';
+    disable.disabled = allow.disabled = cancel.disabled = preferenceSaving || !initialized;
   }
 
   for (let index: number = 0; index < AUDIO_BANDS; index++) {
@@ -92,7 +138,7 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   }
 
   function canHeartbeat(): boolean {
-    return captureIntent && initialized && preferenceVerified && savedAutoStart && !preferenceSaving &&
+    return captureIntent && initialized && preferenceVerified && hasPermission() && !preferenceSaving &&
       !disposed && !pageExited && !document.hidden && status.session === session &&
       (status.state === 'starting' || status.state === 'listening');
   }
@@ -175,15 +221,16 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   }
 
   async function start(): Promise<void> {
-    if (disposed || pageExited || document.hidden || !initialized || !preferenceVerified || !savedAutoStart || preferenceSaving || (status.state !== 'off' && status.state !== 'error') || status.session !== null) return;
+    if (disposed || pageExited || document.hidden || !initialized || !preferenceVerified || !hasPermission() || preferenceSaving || (status.state !== 'off' && status.state !== 'error') || status.session !== null) return;
     automaticStartPending = false;
     startupCancelled = true;
     captureIntent = true;
     heartbeatPending = null;
-    apply({ state: 'starting', session, message: 'Starting · approve system-audio access if macOS asks.' });
+    apply({ state: 'starting', session, message: 'Starting audio capture…' });
     const requestRevision: number = revision;
     try {
-      const result: unknown = await bridge.request('audio.start', { session });
+      const scope: 'spotify' | 'all-app' = captureScope === 'all-app' ? 'all-app' : 'spotify';
+      const result: unknown = await bridge.request('audio.start', { session, scope });
       if (!disposed && revision === requestRevision) apply(result);
     } catch (error: unknown) {
       if (disposed || revision !== requestRevision) return;
@@ -194,7 +241,7 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
 
   function maybeStartAutomatically(): void {
     paint();
-    if ((!automaticStartPending && captureRefresh !== 'stopping') || !initialized || !preferenceVerified || !savedAutoStart || preferenceSaving || disposed || pageExited || document.hidden) return;
+    if ((!automaticStartPending && captureRefresh !== 'stopping') || !initialized || !preferenceVerified || !hasPermission() || preferenceSaving || disposed || pageExited || document.hidden) return;
     if (captureRefresh === 'stopping') {
       if (status.session !== null || (status.state !== 'off' && status.state !== 'error')) return;
       captureRefresh = 'starting';
@@ -218,7 +265,7 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
       if (status.session === session) void stop();
     } else {
       startupCancelled = false;
-      automaticStartPending = savedAutoStart && !preferenceSaving;
+      automaticStartPending = hasPermission() && !preferenceSaving;
       maybeStartAutomatically();
     }
     paint();
@@ -249,7 +296,7 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
     paint();
     if (!enabled) void stop();
     try {
-      await host.call('storage.set', { key: autoStartKey, value: enabled });
+      await host.call('storage.set', { key: preferenceKey(), value: enabled });
       if (disposed) return;
       automaticStartPending = enabled && !document.hidden && !pageExited;
       consent.close();
@@ -272,12 +319,12 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   function refreshPreference(version: number, restoreFocus: boolean = false): void {
     preferenceVerified = false;
     paint();
-    void host.call('storage.get', { key: autoStartKey }).then((stored: unknown): void => {
+    void host.call('storage.get', { key: preferenceKey() }).then((stored: unknown): void => {
       if (disposed || version !== preferenceVersion) return;
       preferenceVerified = true;
       savedAutoStart = stored !== null && typeof stored === 'object' && 'value' in stored && stored.value === true;
       paint();
-      if (!savedAutoStart) void stop();
+      if (!hasPermission()) void stop();
       else maybeStartAutomatically();
     }).catch((): void => {
       if (disposed || version !== preferenceVersion) return;
@@ -338,46 +385,66 @@ export function setupAudioVisualizer(bridge: AudioBridge, initiallyPaused: boole
   window.addEventListener('pagehide', pageExit);
   paint();
   const initialRevision: number = revision;
-  const initialPreferenceVersion: number = preferenceVersion;
   void Promise.all([
-    bridge.request('audio.status'),
-    host.call('storage.get', { key: autoStartKey })
-  ]).then(([result, stored]: unknown[]): void => {
+    bridge.request('audio.status').catch((error: unknown): AudioStatus => ({
+      state: 'error', session: null, message: error instanceof Error ? error.message : 'Audio helper unavailable.'
+    })),
+    bridge.request('audio.capabilities')
+  ]).then(async ([result, capabilities]: unknown[]): Promise<void> => {
     if (disposed) return;
+    const audioSupport: AudioCapabilities = audioCapabilities(capabilities);
+    captureScope = audioSupport.scope;
+    captureScopeReady = true;
+    captureUnavailableMessage = audioSupport.message;
+    configureCaptureScope();
+    if (captureScope !== 'spotify') enable.title = captureUnavailableMessage;
     const unchanged: boolean = revision === initialRevision;
     if (unchanged) apply(result);
-    const preferenceUnchanged: boolean = preferenceVersion === initialPreferenceVersion;
-    if (preferenceUnchanged) {
-      preferenceVerified = true;
-      savedAutoStart = stored !== null && typeof stored === 'object' && 'value' in stored && stored.value === true;
+    const preferenceReadVersion: number = preferenceVersion;
+    try {
+      const stored: unknown = await host.call('storage.get', { key: preferenceKey() });
+      if (disposed) return;
+      if (preferenceVersion === preferenceReadVersion) {
+        preferenceVerified = true;
+        savedAutoStart = stored !== null && typeof stored === 'object' && 'value' in stored && stored.value === true;
+      }
+    } catch {
+      if (disposed) return;
+      preferenceNote.textContent = 'Could not load automatic-start permission. Capture will not start automatically.';
     }
     initialized = true;
     paintPermission();
-    automaticStartPending = savedAutoStart && preferenceUnchanged && !startupCancelled;
+    automaticStartPending = savedAutoStart && preferenceVerified && !startupCancelled;
     maybeStartAutomatically();
   }).catch((error: unknown): void => {
     if (disposed) return;
+    if (!captureScopeReady) {
+      captureScope = 'unsupported';
+      captureUnavailableMessage = 'Could not verify audio capture support. Capture is disabled.';
+      enable.title = captureUnavailableMessage;
+      preferenceNote.textContent = captureUnavailableMessage;
+    }
     initialized = true;
     paintPermission();
-    preferenceNote.textContent = 'Could not load automatic-start permission. Capture will not start automatically.';
     if (revision === initialRevision) apply({ state: 'error', session: null, message: error instanceof Error ? error.message : 'Audio helper unavailable.' });
     paint();
   });
 
   return {
     refresh(): void {
-      if (captureRefresh !== null || disposed || pageExited || document.hidden || !initialized || !preferenceVerified || !savedAutoStart || preferenceSaving || (status.session !== null && status.session !== session)) return;
+      if (captureRefresh !== null || disposed || pageExited || document.hidden || !initialized || !preferenceVerified || !hasPermission() || preferenceSaving || (status.session !== null && status.session !== session)) return;
       void stop();
       captureRefresh = 'stopping';
       maybeStartAutomatically();
     },
     setMotionPaused(value: boolean): void { paused = value; paint(); },
     preferenceChanged(key: string): void {
-      if (key !== autoStartKey || disposed) return;
+      if ((key !== autoStartKey && key !== allAppsAutoStartKey) || disposed) return;
+      if (captureScopeReady && key !== preferenceKey()) return;
       captureRefresh = null;
       const version: number = ++preferenceVersion;
       startupCancelled = true;
-      if (!preferenceSaving) refreshPreference(version);
+      if (!preferenceSaving && captureScopeReady) refreshPreference(version);
     },
     dispose(): void {
       pageExit();

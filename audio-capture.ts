@@ -1,11 +1,26 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { release as osRelease } from 'node:os';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { audioFrame, type AudioFrame, type AudioStatus } from './audio-protocol.ts';
+import { audioFrame, type AudioCapabilities, type AudioCaptureScope, type AudioFrame, type AudioStatus } from './audio-protocol.ts';
 
 type PublishAudio = (event: 'audio.status' | 'audio.frame', payload: AudioStatus | AudioFrame) => void | Promise<void>;
-type LaunchAudio = () => ChildProcessWithoutNullStreams;
+type LaunchAudio = (scope: AudioCaptureScope) => ChildProcessWithoutNullStreams;
+const processLoopbackMinimumBuild: number = 20348;
 
-function launchHelper(): ChildProcessWithoutNullStreams {
+export function supportsWindowsProcessLoopback(version: string): boolean {
+  const [major, minor, build]: number[] = version.split('.').map(Number);
+  return Number.isInteger(major) && Number.isInteger(minor) && Number.isInteger(build) &&
+    (major > 10 || major === 10 && minor === 0 && build >= processLoopbackMinimumBuild);
+}
+
+function launchHelper(scope: AudioCaptureScope): ChildProcessWithoutNullStreams {
+  if (process.platform === 'win32') {
+    const powershell: string = resolve(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const script: string = fileURLToPath(new URL('./native/SpotifyAudioHelper.Windows.ps1', import.meta.url));
+    const mode: string = scope === 'spotify' ? '--capture-spotify' : '--capture-all-app';
+    return spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-MTA', '-File', script, mode], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  }
   const executable: string = fileURLToPath(new URL('./native/SpotifyAudioHelper.app/Contents/MacOS/SpotifyAudioHelper', import.meta.url));
   return spawn(executable, ['--capture-spotify'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
 }
@@ -19,6 +34,7 @@ export class AudioCapture {
   private silence: ReturnType<typeof setTimeout> | undefined;
   private termination: ReturnType<typeof setTimeout> | undefined;
   private lastFrameAt: number = 0;
+  private stderrTail: string = '';
   private disposed: boolean = false;
   private generation: number = 0;
   private framePostPending: boolean = false;
@@ -27,44 +43,65 @@ export class AudioCapture {
   private readonly publish: PublishAudio;
   private readonly launch: LaunchAudio;
   private readonly platform: NodeJS.Platform;
+  private readonly windowsProcessLoopbackSupported: boolean;
+  private currentScope: AudioCaptureScope = 'spotify';
 
   constructor(
     publish: PublishAudio,
     launch: LaunchAudio = launchHelper,
-    platform: NodeJS.Platform = process.platform
+    platform: NodeJS.Platform = process.platform,
+    windowsProcessLoopbackSupported: boolean = platform === 'win32' && supportsWindowsProcessLoopback(osRelease())
   ) {
     this.publish = publish;
     this.launch = launch;
     this.platform = platform;
+    this.windowsProcessLoopbackSupported = windowsProcessLoopbackSupported;
   }
 
   status(): AudioStatus { return { ...this.current }; }
 
-  start(session: string): AudioStatus {
+  capabilities(): AudioCapabilities {
+    if (this.platform === 'darwin' || this.platform === 'win32' && this.windowsProcessLoopbackSupported) return { scope: 'spotify', message: '' };
+    if (this.platform === 'win32') return {
+      scope: 'all-app',
+      message: 'Spotify-only capture is unavailable on this Windows release. You can choose shared audio from the default output device instead.'
+    };
+    return { scope: 'unsupported', message: 'Audio capture is supported on macOS and compatible Windows releases.' };
+  }
+
+  start(session: string, scope: AudioCaptureScope = 'spotify'): AudioStatus {
     if (this.disposed) throw new Error('Audio controller is closed.');
-    if (this.platform !== 'darwin') throw new Error('Spotify capture requires macOS 26 or newer.');
+    const capabilities: AudioCapabilities = this.capabilities();
+    if (capabilities.scope !== scope) throw new Error(capabilities.scope === 'unsupported'
+      ? capabilities.message
+      : 'Requested audio capture scope does not match the available capture mode.');
     if (this.child) {
       if (this.current.session === session && this.current.state !== 'stopping' && this.current.state !== 'error') return this.status();
       throw new Error('Audio capture is active or stopping in another panel. Close that panel first.');
     }
     this.buffer = '';
+    this.stderrTail = '';
     this.generation++;
     this.terminalPostPending = false;
     this.framePostPending = false;
     this.lastFrameAt = 0;
-    this.current = { state: 'starting', message: 'Starting · approve system-audio access if macOS asks.', session };
+    this.current = { state: 'starting', message: 'Starting audio capture…', session };
+    this.currentScope = scope;
     this.emit('audio.status', this.status());
     if (this.current.state === 'error') return this.status();
     try {
-      const child: ChildProcessWithoutNullStreams = this.launch();
+      const child: ChildProcessWithoutNullStreams = this.launch(scope);
       this.child = child;
       child.stdout.setEncoding('utf8');
       child.stdout.on('data', (chunk: string): void => { if (this.child === child) this.receive(chunk); });
-      child.stderr.resume();
+      child.stderr.setEncoding('utf8');
+      child.stderr.on('data', (chunk: string): void => { if (this.child === child) this.stderrTail = (this.stderrTail + chunk).slice(-300); });
       child.stdin.on('error', (): void => { if (this.child === child) this.fail('Audio helper connection closed. Close and reopen the panel to retry.'); });
       child.once('error', (error: NodeJS.ErrnoException): void => {
         if (this.child !== child) return;
-        this.fail(error.code === 'ENOENT' ? 'Audio helper is missing. Run sh tools/build-audio-helper.sh on this Mac.' : `Audio helper could not start (${error.code ?? 'unknown error'}).`);
+        this.fail(error.code === 'ENOENT'
+          ? this.platform === 'win32' ? 'Windows PowerShell or its audio helper is missing.' : 'Audio helper is missing. Run sh tools/build-audio-helper.sh on this Mac.'
+          : `Audio helper could not start (${error.code ?? 'unknown error'}).`);
       });
       child.once('close', (code: number | null): void => {
         if (this.child !== child) return;
@@ -76,10 +113,12 @@ export class AudioCapture {
           ? { ...this.current, session: null }
           : this.current.state === 'stopping'
             ? { state: 'off', message: 'Audio capture off.', session: null }
-            : { state: 'error', message: `Audio helper exited (${code ?? 'signal'}). Close and reopen the panel to retry.`, session: null };
+            : { state: 'error', message: `Audio helper exited (${code ?? 'signal'}).${this.helperDiagnostic()} Close and reopen the panel to retry.`, session: null };
         this.emit('audio.status', this.status());
       });
-      this.startup = setTimeout((): void => this.fail('Audio capture did not start. Check System Settings → Privacy & Security → Screen & System Audio Recording, then close and reopen the panel to retry.'), 120000);
+      this.startup = setTimeout((): void => this.fail(this.platform === 'win32'
+        ? `Audio capture did not start.${this.helperDiagnostic()} Close and reopen the panel to retry.`
+        : `Audio capture did not start.${this.helperDiagnostic()} Check System Settings → Privacy & Security → Screen & System Audio Recording, then close and reopen the panel to retry.`), 120000);
       this.startup.unref();
       this.heartbeat(session);
     } catch (error: unknown) {
@@ -135,7 +174,7 @@ export class AudioCapture {
         if (message === null || typeof message !== 'object' || !('type' in message)) throw new Error('Invalid audio message.');
         if (message.type === 'ready' && this.current.state === 'starting') {
           clearTimeout(this.startup);
-          this.current = { ...this.current, state: 'listening', message: 'Capturing Spotify output.' };
+          this.current = { ...this.current, state: 'listening', message: this.currentScope === 'spotify' ? 'Capturing Spotify output.' : 'Capturing all-app audio output.' };
           this.emit('audio.status', this.status());
           this.expectFrame();
         } else if (message.type === 'frame' && this.current.state === 'listening') {
@@ -153,6 +192,11 @@ export class AudioCapture {
       newline = this.buffer.indexOf('\n');
     }
     if (this.buffer.length > 8192) this.fail('Audio helper exceeded its message limit.');
+  }
+
+  private helperDiagnostic(): string {
+    const text: string = this.stderrTail.replace(/[\r\n\t]+/g, ' ').trim();
+    return text ? ` ${text}` : '';
   }
 
   private expectFrame(): void {
@@ -174,7 +218,7 @@ export class AudioCapture {
     const child: ChildProcessWithoutNullStreams | null = this.child;
     if (!child) return;
     child.stdin.end();
-    child.kill('SIGTERM');
+    if (this.platform !== 'win32') child.kill('SIGTERM');
     this.termination = setTimeout((): void => { if (this.child === child) child.kill('SIGKILL'); }, 1000);
     this.termination.unref();
   }

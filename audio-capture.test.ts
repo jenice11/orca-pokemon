@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { AudioCapture } from './audio-capture.ts';
-import { AUDIO_BANDS, audioFrame, audioSession, audioStatus, type AudioFrame, type AudioStatus } from './audio-protocol.ts';
+import { AudioCapture, supportsWindowsProcessLoopback } from './audio-capture.ts';
+import { AUDIO_BANDS, audioCapabilities, audioFrame, audioSession, audioStartRequest, audioStatus, type AudioFrame, type AudioStatus } from './audio-protocol.ts';
 import { registerAudio, type AudioWorkerApi } from './worker.ts';
 
 function childFixture(): { child: ChildProcessWithoutNullStreams; signals: (NodeJS.Signals | number | undefined)[] } {
@@ -20,13 +20,29 @@ const session: string = 'test-audio-session-1234';
 const frame: AudioFrame = { bands: Array<number>(AUDIO_BANDS).fill(0.5), level: 0.4 };
 
 test('audio protocol validates finite bounded levels and sessions', (): void => {
+  assert.deepEqual(audioCapabilities({ scope: 'spotify', message: '' }), { scope: 'spotify', message: '' });
+  assert.deepEqual(audioCapabilities({ scope: 'all-app', message: 'Fallback available.' }), { scope: 'all-app', message: 'Fallback available.' });
+  assert.deepEqual(audioCapabilities({ scope: 'unsupported', message: 'Unavailable.' }), { scope: 'unsupported', message: 'Unavailable.' });
+  assert.throws((): void => { audioCapabilities({ scope: 'microphone' }); });
+  assert.throws((): void => { audioCapabilities({ scope: 'spotify' }); });
   assert.deepEqual(audioFrame(frame), frame);
   for (const value of [null, {}, { bands: [0], level: 0 }, { bands: Array(24).fill(NaN), level: 0 }, { ...frame, level: Infinity }, { ...frame, bands: Array(24).fill(2) }]) {
     assert.throws((): AudioFrame => audioFrame(value));
   }
   assert.equal(audioSession({ session }), session);
+  assert.deepEqual(audioStartRequest({ session, scope: 'all-app' }), { session, scope: 'all-app' });
+  assert.throws((): void => { audioStartRequest({ session, scope: 'unsupported' }); });
   assert.throws((): string => audioSession({ session: '../../helper' }));
   assert.throws((): AudioStatus => audioStatus({ state: 'fake', message: '', session: null }));
+});
+
+test('Windows process-loopback capability is gated by the OS release', (): void => {
+  assert.equal(supportsWindowsProcessLoopback('10.0.19045'), false);
+  assert.equal(supportsWindowsProcessLoopback('10.0.20348'), true);
+  assert.equal(supportsWindowsProcessLoopback('10.0.22000'), true);
+  assert.equal(supportsWindowsProcessLoopback('11.0.22621'), true);
+  assert.equal(supportsWindowsProcessLoopback('9.0.30000'), false);
+  assert.equal(supportsWindowsProcessLoopback('10.0.invalid'), false);
 });
 
 test('controller and worker registration never start audio during initialization or status requests', async (): Promise<void> => {
@@ -39,6 +55,7 @@ test('controller and worker registration never start audio during initialization
     post(): void {}
   } };
   registerAudio(api, capture);
+  assert.deepEqual(await handlers.get('audio.capabilities')!(null), { scope: 'spotify', message: '' });
   await handlers.get('audio.status')!(null);
   await handlers.get('audio.heartbeat')!({ session });
   await handlers.get('audio.stop')!({ session });
@@ -73,6 +90,56 @@ test('explicit start is single-flight, streams validated frames, and stop closes
   assert.equal(capture.status().state, 'off');
   assert.equal(capture.status().session, null);
   capture.dispose();
+});
+
+test('Windows capture is Spotify-only and requests graceful stdin shutdown', (context: TestContext): void => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const statuses: AudioStatus[] = [];
+  const capture: AudioCapture = new AudioCapture((name, payload): void => {
+    if (name === 'audio.status') statuses.push(payload as AudioStatus);
+  }, (): ChildProcessWithoutNullStreams => fixture.child, 'win32', true);
+  try {
+    assert.deepEqual(capture.capabilities(), { scope: 'spotify', message: '' });
+    assert.equal(capture.start(session).state, 'starting');
+    fixture.child.stdout.emit('data', '{"type":"ready"}\n');
+    assert.equal(capture.status().message, 'Capturing Spotify output.');
+    assert.equal(capture.stop(session).state, 'stopping');
+    assert.ok(fixture.child.stdin.writableEnded);
+    assert.deepEqual(fixture.signals, [], 'Windows helper must get EOF before forced termination.');
+    context.mock.timers.tick(1000);
+    assert.deepEqual(fixture.signals, ['SIGKILL']);
+    fixture.child.emit('close', 0);
+    assert.equal(capture.status().state, 'off');
+    assert.ok(statuses.some((status): boolean => status.message === 'Capturing Spotify output.'));
+  } finally { void capture.dispose(true); }
+});
+
+test('all-app fallback requires an explicit scope on unsupported Windows releases', (context: TestContext): void => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  let launches: number = 0;
+  const scopes: string[] = [];
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const capture: AudioCapture = new AudioCapture((): void => {}, (scope): ChildProcessWithoutNullStreams => {
+    launches++;
+    scopes.push(scope);
+    return fixture.child;
+  }, 'win32', false);
+  assert.deepEqual(capture.capabilities(), {
+    scope: 'all-app',
+    message: 'Spotify-only capture is unavailable on this Windows release. You can choose shared audio from the default output device instead.'
+  });
+  assert.throws((): AudioStatus => capture.start(session), /does not match the available capture mode/);
+  assert.equal(launches, 0);
+  assert.equal(capture.start(session, 'all-app').state, 'starting');
+  assert.deepEqual(scopes, ['all-app']);
+  fixture.child.stdout.emit('data', '{"type":"ready"}\n');
+  assert.equal(capture.status().message, 'Capturing all-app audio output.');
+  capture.stop(session);
+  context.mock.timers.tick(1000);
+  fixture.child.emit('close', 0);
+  assert.equal(capture.status().state, 'off');
+  capture.dispose(true);
 });
 
 test('repeated stop and teardown preserve the first forced-kill deadline', async (context: TestContext): Promise<void> => {
@@ -195,6 +262,25 @@ test('connection, exit, and startup errors describe an available recovery action
   }
 });
 
+test('Windows startup timeout does not show macOS recovery instructions', (context: TestContext): void => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const capture: AudioCapture = new AudioCapture((): void => {}, (): ChildProcessWithoutNullStreams => fixture.child, 'win32', true);
+  try {
+    capture.start(session);
+    for (let renewal: number = 0; renewal < 29; renewal++) {
+      context.mock.timers.tick(4000);
+      capture.heartbeat(session);
+    }
+    context.mock.timers.tick(4000);
+    assert.equal(capture.status().state, 'error');
+    assert.match(capture.status().message, /close and reopen the panel/i);
+    assert.doesNotMatch(capture.status().message, /System Settings|Privacy & Security/);
+  } finally {
+    void capture.dispose(true);
+  }
+});
+
 test('heartbeats renew the lease without starting or restarting capture', (context: TestContext): void => {
   context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
   const fixture: ReturnType<typeof childFixture> = childFixture();
@@ -221,7 +307,11 @@ test('spawn failures, helper errors, and worker teardown keep capture stopped', 
   assert.equal(capture.status().state, 'error');
   capture.dispose();
   const unsupported: AudioCapture = new AudioCapture((): void => {}, (): ChildProcessWithoutNullStreams => { throw new Error('must not launch'); }, 'linux');
-  assert.throws((): AudioStatus => unsupported.start(session), /macOS 26/);
+  assert.deepEqual(unsupported.capabilities(), {
+    scope: 'unsupported',
+    message: 'Audio capture is supported on macOS and compatible Windows releases.'
+  });
+  assert.throws((): AudioStatus => unsupported.start(session), /macOS and compatible Windows/);
   unsupported.dispose();
   const live: ReturnType<typeof childFixture> = childFixture();
   const active: AudioCapture = new AudioCapture((): void => {}, (): ChildProcessWithoutNullStreams => live.child, 'darwin');
@@ -501,4 +591,14 @@ test('deactivation waits for shutdown and preserves forced termination', async (
   exiting.start(session);
   await exiting.dispose(true);
   assert.deepEqual(exitFixture.signals, ['SIGKILL']);
+});
+
+test('helper stderr is shown when the helper exits or never starts', (): void => {
+  const fixture: ReturnType<typeof childFixture> = childFixture();
+  const statuses: AudioStatus[] = [];
+  const capture: AudioCapture = new AudioCapture((event, payload): void => { if (event === 'audio.status') statuses.push(payload as AudioStatus); }, (): ChildProcessWithoutNullStreams => fixture.child, 'win32', true);
+  capture.start(session);
+  (fixture.child.stderr as PassThrough).write('Add-Type : constrained\r\nlanguage mode\n');
+  fixture.child.emit('close', 1);
+  assert.equal(statuses.at(-1)!.message, 'Audio helper exited (1). Add-Type : constrained language mode Close and reopen the panel to retry.');
 });

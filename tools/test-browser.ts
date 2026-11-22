@@ -28,6 +28,7 @@ const scenarios: Scenario[] = [
   { module: 'project-browser', method: 'verifyPartialReadFailure', query: '?fail-order-read=cards.order.v1' },
   { module: 'project-browser', method: 'verifyPartialReadFailure', query: '?fail-order-read=projects.order.v1' },
   { module: 'audio-browser', method: 'run' },
+  { module: 'autostart-browser', method: 'windowsFallback', query: '?windows-audio' },
   { module: 'autostart-browser', method: 'consent', reloadMethod: 'remembered' },
   { module: 'autostart-browser', method: 'delayedRead', query: '?defer-auto-read' },
   { module: 'autostart-browser', method: 'delayedNotification' },

@@ -11,6 +11,38 @@ export interface AudioFrame {
   level: number;
 }
 
+export interface AudioCapabilities {
+  scope: 'spotify' | 'all-app' | 'unsupported';
+  message: string;
+}
+
+export function audioCapabilities(value: unknown): AudioCapabilities {
+  if (value === null || typeof value !== 'object' || !('scope' in value) || !('message' in value)) {
+    throw new Error('Invalid audio capture capabilities.');
+  }
+  const scope: unknown = value.scope;
+  if ((scope !== 'spotify' && scope !== 'all-app' && scope !== 'unsupported') || typeof value.message !== 'string' || value.message.length > 500) {
+    throw new Error('Invalid audio capture capabilities.');
+  }
+  return { scope, message: value.message };
+}
+
+export type AudioCaptureScope = 'spotify' | 'all-app';
+
+export interface AudioStartRequest {
+  session: string;
+  scope: AudioCaptureScope;
+}
+
+export function audioStartRequest(value: unknown): AudioStartRequest {
+  const session: string = audioSession(value);
+  if (value === null || typeof value !== 'object' || !('scope' in value) ||
+      (value.scope !== 'spotify' && value.scope !== 'all-app')) {
+    throw new Error('Invalid audio capture scope.');
+  }
+  return { session, scope: value.scope };
+}
+
 export function audioStatus(value: unknown): AudioStatus {
   if (value === null || typeof value !== 'object') throw new Error('Invalid audio status.');
   const data: Partial<AudioStatus> = value as Partial<AudioStatus>;

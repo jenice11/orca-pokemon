@@ -3,7 +3,7 @@ declare const fixture: {
   resolveAutoRead: ((value: unknown) => void) | null;
   notifyStorage(key: string): void;
   audio: { state: string };
-  calls: { name?: string; method?: string; params?: { key: string; value?: unknown } }[];
+  calls: { name?: string; method?: string; params?: { key: string; value?: unknown }; input?: { session: string; scope: string } }[];
 };
 declare const orca: { host: { call(method: string, params: unknown): Promise<unknown> } };
 
@@ -14,10 +14,13 @@ function check(condition: unknown, message: string): asserts condition {
 function entry(): HTMLButtonElement { return button('audio-enable'); }
 function approved(): boolean { return !button('audio-disable').hidden; }
 function button(id: string): HTMLButtonElement { return document.getElementById(id) as HTMLButtonElement; }
-function confirmation(): HTMLElement { return document.getElementById('audio-consent')!; }
+function confirmation(): HTMLDialogElement { return document.getElementById('audio-consent') as HTMLDialogElement; }
 function starts(): number { return fixture.calls.filter((call): boolean => call.name === 'audio.start').length; }
 function preferenceWrites(): unknown[] {
   return fixture.calls.filter((call): boolean => call.method === 'storage.set' && call.params?.key === 'audio.autostart.v1').map((call): unknown => call.params!.value);
+}
+function allAppPreferenceWrites(): unknown[] {
+  return fixture.calls.filter((call): boolean => call.method === 'storage.set' && call.params?.key === 'audio.all-app-autostart.v1').map((call): unknown => call.params!.value);
 }
 
 async function until(condition: () => boolean): Promise<void> {
@@ -72,6 +75,33 @@ export async function consent(): Promise<string[]> {
   await until((): boolean => fixture.audio.state === 'off');
   check(approved() && !preferenceWrites().includes(false), 'Closing the panel must retain remembered consent.');
   return ['default off', 'confirmation required', 'Cancel writes nothing', 'failed save stays off', 'Allow persists consent', 'closing retains consent'];
+}
+
+export async function windowsFallback(): Promise<string[]> {
+  check(typeof fixture !== 'undefined', 'Windows fallback tests require the mock preview.');
+  await until((): boolean => entry().title.includes('You can choose shared audio'));
+  check(document.getElementById('audio-preference-status')!.textContent === '', 'The fallback explanation must stay in the all-app button tooltip, not in visible text.');
+  check(starts() === 0 && !approved(), 'Saved Spotify permission must not authorize all-app capture.');
+  check(!entry().hidden && !entry().disabled, 'The all-app choice must be available as a separate opt-in.');
+  check(document.getElementById('audio-title')!.textContent === 'All-app audio', 'Fallback mode must identify its broader scope.');
+  entry().click();
+  check(confirmation().textContent!.includes('visualizer analyzes audio from all apps'), 'Consent must describe the all-app capture scope.');
+  check(button('audio-allow').textContent === 'Allow' && button('audio-cancel').textContent === 'No', 'Consent choices must be Allow or No.');
+  fixture.failStorage = true;
+  button('audio-allow').click();
+  await until((): boolean => Boolean(document.getElementById('audio-consent-error')!.textContent));
+  check(starts() === 0 && !approved(), 'A failed all-app consent write must not start capture.');
+  fixture.failStorage = false;
+  button('audio-allow').click();
+  await until((): boolean => approved() && starts() === 1);
+  check(allAppPreferenceWrites().includes(true), 'Explicit approval must use the separate all-app permission key.');
+  check(preferenceWrites().length === 0, 'All-app approval must not write the Spotify-only permission key.');
+  check(fixture.calls.find((call): boolean => call.name === 'audio.start')?.input?.scope === 'all-app', 'The worker must receive an explicit all-app scope.');
+  button('audio-disable').click();
+  await until((): boolean => !approved());
+  check(allAppPreferenceWrites().includes(false), 'Disable must revoke the all-app permission.');
+  check(preferenceWrites().length === 0, 'Revoking all-app capture must not alter Spotify-only permission.');
+  return ['unsupported Spotify scope offers a separate all-app choice', 'explicit all-app consent is isolated and revocable'];
 }
 
 export async function remembered(): Promise<string[]> {

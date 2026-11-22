@@ -8,7 +8,7 @@
   </head>
   <body>
     <header>
-      <div class="heading"><h1>Poké crew</h1><div class="heading-actions"><button id="usage-help" type="button" popovertarget="usage-tooltip" aria-label="How to use" title="How to use">?</button><button id="refresh" type="button" aria-label="Refresh" title="Refresh agents and permitted Spotify capture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.9 1 6.7 2.7L21 8M21 3v5h-5" /></svg></button></div></div>
+      <div class="heading"><h1>Poké crew</h1><div class="heading-actions"><button id="usage-help" type="button" popovertarget="usage-tooltip" aria-label="How to use" title="How to use">?</button><button id="refresh" type="button" aria-label="Refresh" title="Refresh agents and permitted audio capture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.9 1 6.7 2.7L21 8M21 3v5h-5" /></svg></button></div></div>
       <div id="usage-tooltip" popover="auto" aria-labelledby="usage-title">
         <h2 id="usage-title">How to use</h2>
         <p>Click a Pokémon to focus its agent.<br />Click its Poké Ball for Work and Pokémon options.</p>
@@ -61,16 +61,16 @@
     </div>
     <footer class="bottom-bar">
       <div class="bottom-bar-controls">
-        <button id="audio-enable" class="audio-power" type="button" aria-label="Allow Spotify visualizer" aria-pressed="false" title="Turn on Spotify visualizer" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M6 9c4-1.5 8-1.2 12 1M7 12.5c3.4-1.2 6.7-.9 10 1M8 16c2.7-.9 5.3-.6 8 .8" /><path class="spotify-slash" d="m3 3 18 18" /></svg><span>Spotify</span></button>
-        <button id="audio-disable" class="audio-power" type="button" aria-label="Disable visualizer" aria-pressed="true" title="Turn off Spotify visualizer" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M6 9c4-1.5 8-1.2 12 1M7 12.5c3.4-1.2 6.7-.9 10 1M8 16c2.7-.9 5.3-.6 8 .8" /></svg><span>Spotify</span></button>
+        <button id="audio-enable" class="audio-power" type="button" aria-label="Allow Spotify visualizer" aria-pressed="false" title="Turn on Spotify visualizer" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M6 9c4-1.5 8-1.2 12 1M7 12.5c3.4-1.2 6.7-.9 10 1M8 16c2.7-.9 5.3-.6 8 .8" /><path class="spotify-slash" d="m3 3 18 18" /></svg><span id="audio-enable-label">Spotify</span></button>
+        <button id="audio-disable" class="audio-power" type="button" aria-label="Disable visualizer" aria-pressed="true" title="Turn off Spotify visualizer" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M6 9c4-1.5 8-1.2 12 1M7 12.5c3.4-1.2 6.7-.9 10 1M8 16c2.7-.9 5.3-.6 8 .8" /></svg><span id="audio-disable-label">Spotify</span></button>
         <button id="credits-button" type="button" popovertarget="credits-popup" aria-label="About and credits"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></svg><span>About</span></button>
       </div>
       <dialog id="audio-consent" class="audio-consent" aria-labelledby="audio-consent-title" hidden>
-        <h3 id="audio-consent-title">Allow automatic Spotify capture?</h3>
-        <p>This panel will capture Spotify output now and on future opens or reloads, without asking again. No microphone, saved audio, or uploads. macOS audio permission is still required.</p>
-        <p>Use the Spotify visualizer power button to revoke this choice and stop capture. Closing the panel also stops capture; future opens can start again while permission remains enabled.</p>
+        <h3 id="audio-consent-title">Allow automatic audio capture?</h3>
+        <p id="audio-consent-description">This panel will analyze audio output now and on future opens or reloads, without asking again. Capture is limited to Spotify on macOS and to Spotify and its child processes on supported Windows releases. Audio stays in memory; no microphone, saved audio, or uploads. macOS audio permission is still required.</p>
+        <p>Closing the panel stops capture. It starts again on future opens if you have saved permission.</p>
         <p id="audio-consent-error" role="alert"></p>
-        <div class="audio-controls"><button id="audio-allow" type="button">Allow and remember</button><button id="audio-cancel" type="button">Cancel</button></div>
+        <div class="audio-controls"><button id="audio-allow" type="button">Allow</button><button id="audio-cancel" type="button">No</button></div>
       </dialog>
       <div id="credits-popup" popover="auto" role="dialog" aria-labelledby="credits-title">
         <h2 id="credits-title">About &amp; credits</h2>

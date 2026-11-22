@@ -7,6 +7,7 @@ import type { AudioStatus } from './audio-protocol.ts';
 test('footer power controls stay accessible and credits exclude usage instructions', (): void => {
   const html: string = readFileSync(new URL('./panel/index.html', import.meta.url), 'utf8');
   const css: string = readFileSync(new URL('./panel/style.css', import.meta.url), 'utf8');
+  assert.match(html, /Spotify and its child processes on supported Windows releases/);
   assert.match(html, /id="audio-enable"[^>]*aria-label="Allow Spotify visualizer"[^>]*aria-pressed="false"[^>]*><svg/);
   assert.match(html, /id="audio-disable"[^>]*aria-label="Disable visualizer"[^>]*aria-pressed="true"[^>]*><svg/);
   const offButton: string = html.match(/<button id="audio-enable"[\s\S]*?<\/button>/)![0];
@@ -34,8 +35,10 @@ test('footer power controls stay accessible and credits exclude usage instructio
   assert.doesNotMatch(html.match(/<main>[\s\S]*?<\/main>/)![0], /id="audio-enable"|id="credits-button"/);
   assert.match(css, /\.bottom-bar-controls \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(css, /\.bottom-bar-controls > button\[hidden\] \{ display: none; \}/);
-  assert.match(offButton, /<\/svg><span>Spotify<\/span>/);
-  assert.match(onButton, /<\/svg><span>Spotify<\/span>/);
+  assert.match(css, /\.audio-controls \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(css, /\.audio-controls button \{[^}]*width: 100%;/);
+  assert.match(offButton, /<\/svg><span[^>]*>Spotify<\/span>/);
+  assert.match(onButton, /<\/svg><span[^>]*>Spotify<\/span>/);
   assert.match(footer, /id="credits-button"[\s\S]*?<\/svg><span>About<\/span>/);
   assert.match(css, /#credits-popup \{[^}]*position: fixed;/);
   assert.match(html, /id="audio-status" role="status" data-state="off"><\/p>/);
@@ -52,9 +55,19 @@ test('footer power controls stay accessible and credits exclude usage instructio
 test('native permission and recovery text names existing panel controls', (): void => {
   const source: string = readFileSync(new URL('./native/SpotifyAudioHelper.swift', import.meta.url), 'utf8');
   const plist: string = readFileSync(new URL('./native/Info.plist', import.meta.url), 'utf8');
+  const windowsScript: string = readFileSync(new URL('./native/SpotifyAudioHelper.Windows.ps1', import.meta.url), 'utf8');
+  const windowsHelper: string = readFileSync(new URL('./native/SpotifyAudioHelper.Windows.cs', import.meta.url), 'utf8');
   assert.doesNotMatch(source + plist, /\b(?:click|press) Start\b/i);
   assert.match(source, /then click Refresh in the panel/);
   assert.match(plist, /after you allow automatic capture in the panel/);
+  assert.match(windowsScript, /Add-Type -TypeDefinition/);
+  assert.match(windowsHelper, /LoopbackFlag = 0x00020000/);
+  assert.match(windowsHelper, /ActivateAudioInterfaceAsync/);
+  assert.match(windowsHelper, /SpotifyProcessTreeRoots/);
+  assert.match(windowsHelper, /ProcessIdToSessionId/);
+  assert.match(windowsHelper, /GetDefaultAudioEndpoint/);
+  assert.match(windowsHelper, /allApps && spotifySupported/);
+  assert.match(windowsHelper, /WatchInput/);
 });
 
 interface MockAnimation {
@@ -64,7 +77,7 @@ interface MockAnimation {
   cancel(): void;
 }
 
-async function verifyReopen(context: TestContext, initialStatusEvent: boolean, previousCapture: boolean = false, initialPermission: unknown = true, refreshScenario?: string): Promise<void> {
+async function verifyReopen(context: TestContext, initialStatusEvent: boolean, previousCapture: boolean = false, initialPermission: unknown = true, refreshScenario?: string, scope: 'spotify' | 'all-app' | 'unsupported' | 'failure' = 'spotify', initialAllAppPermission: unknown = false): Promise<void> {
   context.mock.timers.enable({ apis: ['setInterval'] });
   class Element extends EventTarget {
     animation: MockAnimation | undefined;
@@ -88,8 +101,11 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
     showModal(): void { this.open = true; }
     close(): void { this.open = false; }
     textContent: string = '';
+    title: string = '';
+    ariaLabel: string = '';
     dataset: Record<string, string> = {};
     style: { transform: string } = { transform: '' };
+    setAttribute(name: string, value: string): void { if (name === 'aria-label') this.ariaLabel = value; }
     append(): void {}
     focus(): void {}
   }
@@ -113,15 +129,24 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
   let failStart: boolean = false;
   let heartbeats: number = 0;
   const pendingHeartbeats: ((error?: Error) => void)[] = [];
-  let permission: unknown = initialPermission;
+  let spotifyPermission: unknown = initialPermission;
+  let allAppsPermission: unknown = initialAllAppPermission;
+  let permission: unknown = scope === 'all-app' ? initialAllAppPermission : initialPermission;
   let writes: number = 0;
   let delayNextStop: boolean = false;
   let stopReturnsStopping: boolean = false;
   let finishStop: (() => void) | undefined;
   let readPermission: (() => Promise<unknown>) | undefined;
+  const startedScopes: unknown[] = [];
   const listeners: Map<string, (value: unknown) => void> = new Map();
   const bridge: AudioBridge = {
     async request(name: string, input?: unknown): Promise<unknown> {
+      if (name === 'audio.capabilities') {
+        if (scope === 'failure') throw new Error('Capability lookup failed.');
+        return { scope, message: scope === 'all-app'
+          ? 'Spotify-only capture is unavailable on this Windows release. You can choose shared audio from the default output device instead.'
+          : scope === 'unsupported' ? 'Spotify-only audio capture is unavailable on this Windows release.' : '' };
+      }
       if (name === 'audio.heartbeat') {
         heartbeats++;
         if (refreshScenario?.startsWith('pending-heartbeat') && heartbeats <= 2) {
@@ -133,6 +158,7 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
         }
       } else if (name === 'audio.start') {
         starts++;
+        startedScopes.push((input as { scope: unknown }).scope);
         if (failStart) throw new Error('Capture permission denied');
         status = { state: 'listening', session: (input as { session: string }).session, message: 'Capturing' };
       } else if (name === 'audio.stop') {
@@ -167,9 +193,15 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
         if (initialPermission instanceof Error) throw initialPermission;
         if (method === 'storage.set') {
           writes++;
-          permission = (params as { value: unknown }).value;
+          const key: string = (params as { key: string; value: unknown }).key;
+          const value: unknown = (params as { key: string; value: unknown }).value;
+          if (key === 'audio.all-app-autostart.v1') allAppsPermission = value;
+          else spotifyPermission = value;
+          if (key === (scope === 'all-app' ? 'audio.all-app-autostart.v1' : 'audio.autostart.v1')) permission = value;
           return null;
         }
+        const key: string = (params as { key: string }).key;
+        if (key === 'audio.all-app-autostart.v1') return readPermission ? readPermission() : { value: allAppsPermission };
         return readPermission ? readPermission() : { value: permission };
       }
     });
@@ -177,6 +209,31 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
     assert.equal(elements.get('audio-bands')!.hidden, true);
     assert.equal(elements.get('audio-idle')!.hidden, true, 'Loading must not show an idle sprite.');
     await settle();
+    if (scope === 'unsupported') {
+      assert.equal(starts, 0, 'Unsupported Windows releases must not start capture, even with saved permission.');
+      assert.equal(elements.get('audio-card')!.hidden, true);
+      assert.equal(elements.get('audio-enable')!.disabled, true);
+      assert.match(elements.get('audio-preference-status')!.textContent, /unavailable on this Windows release/);
+      assert.match(elements.get('audio-enable')!.title, /unavailable on this Windows release/);
+      return;
+    }
+    if (scope === 'failure') {
+      assert.equal(starts, 0, 'Unverified capture support must not start capture.');
+      assert.equal(elements.get('audio-card')!.hidden, true);
+      assert.equal(elements.get('audio-enable')!.disabled, true);
+      assert.match(elements.get('audio-preference-status')!.textContent, /Could not verify audio capture support/);
+      return;
+    }
+    if (scope === 'all-app') {
+      assert.equal(elements.get('audio-title')!.textContent, 'All-app audio');
+      assert.equal(elements.get('audio-bands')!.ariaLabel, 'All-app output frequency spectrum');
+      assert.match(elements.get('audio-consent-description')!.textContent, /visualizer analyzes audio from all apps/);
+      assert.match(elements.get('audio-preference-status')!.textContent, /unavailable on this Windows release/);
+      assert.match(elements.get('audio-enable')!.title, /Spotify-only capture is unavailable/);
+      assert.equal(elements.get('audio-enable-label')!.textContent, 'All apps');
+      assert.equal(elements.get('audio-allow')!.textContent, 'Allow');
+      assert.equal(elements.get('audio-cancel')!.textContent, 'No');
+    }
     if (initialPermission instanceof Error) {
       assert.equal(elements.get('audio-card')!.hidden, true, 'Unverified permission must keep the visualizer hidden.');
       assert.equal(starts, 0);
@@ -190,12 +247,12 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
     assert.equal(elements.has('audio-stop'), false, 'The visualizer must not require a Stop button.');
     assert.equal(elements.has('audio-start'), false, 'Capture eligibility must not depend on a Start button.');
     assert.equal(elements.has('audio-autostart'), false, 'Saved consent must not depend on a checkbox.');
-    if (initialPermission === true) {
+    if (permission === true) {
       assert.equal(elements.get('audio-card')!.hidden, false, 'Remembered enable must show the visualizer.');
       assert.equal(elements.get('audio-enable')!.hidden, true, 'Saved permission must hide the entry control.');
       assert.equal(elements.get('audio-disable')!.hidden, false, 'Saved permission must expose revocation.');
     }
-    if (initialPermission !== true) {
+    if (permission !== true) {
       assert.equal(elements.get('audio-card')!.hidden, true, 'Disabled visualizer must disappear.');
       const automatic: Element = elements.get('audio-enable')!;
       assert.equal(automatic.hidden, false, 'Only literal true grants saved consent.');
@@ -227,6 +284,10 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
       await settle();
       assert.equal(automatic.hidden, true);
       assert.equal(elements.get('audio-card')!.hidden, false, 'Verified consent must reveal the visualizer.');
+      if (scope === 'all-app') {
+        assert.equal(allAppsPermission, true, 'All-app approval must use its own stored permission.');
+        assert.equal(spotifyPermission, initialPermission, 'All-app approval must not alter Spotify-only permission.');
+      }
     }
     if (previousCapture) {
       assert.equal(starts, 0, 'Reopening must not take over a previous capture.');
@@ -238,6 +299,15 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
       await settle();
     }
     assert.equal(starts, 1, 'Saved consent must start even when a status event arrives during initialization.');
+    assert.deepEqual(startedScopes, [scope === 'all-app' ? 'all-app' : 'spotify']);
+    if (scope === 'all-app') {
+      elements.get('audio-disable')!.dispatchEvent(new Event('click'));
+      await settle();
+      assert.equal(allAppsPermission, false, 'Disable must revoke the all-app permission only.');
+      assert.equal(spotifyPermission, initialPermission, 'All-app revocation must preserve Spotify-only permission.');
+      assert.equal(status.state, 'off');
+      return;
+    }
     if (refreshScenario?.startsWith('pending-heartbeat')) {
       context.mock.timers.tick(1000);
       await settle();
@@ -506,6 +576,7 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
     elements.get('audio-disable')!.dispatchEvent(new Event('click'));
     await settle();
     assert.equal(permission, false, 'Disable must persist literal false.');
+    assert.equal(allAppsPermission, initialAllAppPermission, 'Spotify-only permission changes must not affect all-app permission.');
     assert.equal(status.state, 'off', 'Disable must stop owned capture.');
     assert.equal(elements.get('audio-status')!.textContent, '', 'Stopping capture must not show a popup.');
     assert.equal(elements.get('audio-enable')!.hidden, false, 'Disable must restore explicit consent.');
@@ -544,6 +615,11 @@ for (const scenario of ['restart', 'failure', 'revoke', 'verify', 'hide', 'dispo
 test('permission load failure after an early status event clears the loader', (context: TestContext): Promise<void> => verifyReopen(context, true, false, new Error('Storage unavailable')));
 test('early status events do not suppress remembered capture on open or reopen', (context: TestContext): Promise<void> => verifyReopen(context, true));
 test('quick reopen waits for the previous panel lease to expire before starting', (context: TestContext): Promise<void> => verifyReopen(context, true, true));
+test('unsupported Windows capture stays disabled despite saved permission', (context: TestContext): Promise<void> => verifyReopen(context, true, false, true, undefined, 'unsupported'));
+test('capture capability lookup failures fail closed', (context: TestContext): Promise<void> => verifyReopen(context, true, false, true, undefined, 'failure'));
+test('Spotify-only consent does not authorize all-app fallback', (context: TestContext): Promise<void> => verifyReopen(context, true, false, true, undefined, 'all-app'));
+test('remembered all-app consent is used only when Spotify-only capture is unavailable', (context: TestContext): Promise<void> => verifyReopen(context, true, false, false, undefined, 'all-app', true));
+test('all-app consent does not authorize Spotify-only capture', (context: TestContext): Promise<void> => verifyReopen(context, true, false, false, undefined, 'spotify', true));
 for (const permission of [false, null, 'true', 1]) {
   test(`consent UI starts the current panel only after Allow with stored ${JSON.stringify(permission)}`, (context: TestContext): Promise<void> => verifyReopen(context, true, false, permission));
 }

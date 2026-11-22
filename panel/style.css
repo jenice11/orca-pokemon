@@ -196,8 +196,8 @@ summary { cursor: pointer; }
 #audio-status { font-size: 12px; color: var(--orca-muted-foreground, #acb0bb); overflow-wrap: anywhere; margin: 4px 0; }
 #audio-status[data-state="error"] { color: var(--orca-destructive, #ff9595); }
 #audio-status[data-state="off"] { display: none; }
-.audio-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.audio-controls button { font-size: 12px; min-height: 30px; }
+.audio-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.audio-controls button { width: 100%; font-size: 12px; min-height: 30px; }
 .bottom-bar-controls .audio-power[aria-pressed="true"] { color: #1db954; }
 .bottom-bar-controls .audio-power[aria-pressed="false"] { color: var(--orca-muted-foreground, #acb0bb); }
 .audio-consent { box-sizing: border-box; width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; margin: auto; padding: 16px; border: 1px solid var(--orca-border, #363a43); border-radius: var(--orca-radius, 10px); background: var(--orca-card, #20232a); color: var(--orca-foreground, #e8e8ed); text-align: left; }

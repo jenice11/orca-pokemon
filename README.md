@@ -21,9 +21,9 @@ Requires **Orca desktop 1.4.250 or newer**, with plugins enabled.
 3. Review the requested access before approving. Pokémon Agents runs as a **trusted Node worker with your user account's machine access**, not as a sandboxed panel. It requests workspace read/write, agent read, and plugin-owned storage access.
 4. Open **Pokémon Agents** from the right sidebar.
 
-No Node.js, npm, or build step is needed to install or use the plugin. The Spotify helper is bundled for Apple Silicon Macs.
+No Node.js, npm, or build step is needed to install or use the plugin. The macOS Spotify helper is bundled for Apple Silicon; Windows uses the bundled PowerShell/C# helper where process-specific capture is supported.
 
-The worker checks standard macOS app locations and the standard Windows Orca install path when the GUI's `PATH` does not include the CLI. Native rendering and terminal focus have been verified on macOS. Windows, Linux, and SSH navigation have not been live-tested.
+The worker checks standard macOS app locations and the standard Windows Orca install path when the GUI's `PATH` does not include the CLI. Native rendering and terminal focus have been verified on macOS. Windows helper compilation and its synthetic self-test pass; live Windows audio capture, Linux, and SSH navigation have not been live-tested.
 
 ## Available Pokemon
 
@@ -39,7 +39,7 @@ Bulbasaur, Charmander, Squirtle, Pikachu, Jigglypuff, Meowth, Psyduck, Gengar, C
 | Project controls | Group, filter, sort, collapse, and manually reorder agents and projects |
 | Accessible controls | Keyboard navigation, status labels, a motion toggle, and reduced-motion support |
 | Offline sprites | 69 bundled animation sheets; no runtime downloads, telemetry, or external requests |
-| Spotify visualizer | Optional; requires Spotify desktop on macOS 26+ with Apple Silicon and explicit permission |
+| Audio visualizer | Optional; requires explicit permission. macOS 26+ captures Spotify only; Windows uses Spotify-only capture where available and offers separately consented all-app capture otherwise |
 
 “Done” reflects Orca's status; it does not prove the agent's task succeeded.
 
@@ -48,7 +48,7 @@ Bulbasaur, Charmander, Squirtle, Pikachu, Jigglypuff, Meowth, Psyduck, Gengar, C
 1. Start an agent in an Orca terminal and open **Pokémon Agents** in the right sidebar.
 2. Click its Pokémon, or use Tab and Enter, to focus the terminal.
 3. Click the Poké Ball in the sprite area's lower-left corner, then choose Pokémon to search names (case-insensitive). The current species is marked. Use Arrow Up/Down and Enter to choose, or Escape to close. Choosing saves immediately, updates the sprite, closes the picker, and returns focus to the Poké Ball. Right-clicking the Pokémon opens search directly. Failed saves keep the previous species, show an error, and leave search usable. Clicking outside dismisses without taking focus.
-4. Use **Pause** to stop animations, or **Refresh** to reconcile the roster and refresh permitted Spotify capture.
+4. Use **Pause** to stop animations, or **Refresh** to reconcile the roster and refresh permitted audio capture.
 
 The Poké Ball opens a battle-style popup. Choose **Pokémon** to search species, or **Work** to choose Pikachu's Walk/Shock/Tumble work animation. Work is currently available for Pikachu only. Arrow keys move the cursor; Enter chooses an option. Escape closes the popup. A successful choice saves and closes the popup; failures keep it open for retry. Tumble plays left to right, then TumbleBack plays right to left, looping every 3.6 seconds. The work animation choice saves per agent; Shock remains the default. Other Pokémon keep their existing walking animation.
 
@@ -69,21 +69,21 @@ If saved order cannot be read, moves stay local to protect existing saved positi
 
 ## Spotify visualizer
 
-The power icon beside **Spotify visualizer** turns it on or off. Its highlighted state means saved permission is enabled; turning it on still requires the consent confirmation.
+The **Spotify** or **All apps** button opens the consent prompt. Once enabled, the same button turns capture off and revokes permission. Windows uses Spotify process loopback where supported. If Spotify-only capture is unavailable, the panel offers a separate all-app permission; it never reuses Spotify-only consent for that broader scope.
 
-1. Play a song in Spotify desktop on this Mac. Spotify Connect playback on another device cannot be captured here.
-2. Choose **Allow Spotify visualizer**, read the confirmation popup, and choose **Allow and remember**. Cancel or Escape closes it without granting permission. If macOS asks, approve system-audio recording for the helper or its responsible host in **System Settings → Privacy & Security → Screen & System Audio Recording**.
+1. Play Spotify on this computer. Spotify Connect playback on another device cannot be captured here.
+2. Choose **Allow Spotify visualizer**, read the confirmation popup, and choose **Allow**. **No** or Escape closes it without granting permission. On macOS, if asked, approve system-audio recording for the helper or its responsible host in **System Settings → Privacy & Security → Screen & System Audio Recording**.
 3. Hide or close the panel to end capture. Automatic start is off by default.
 
-Permission is off by default. Enable and Disable share the footer control area outside the visualizer. The Spotify card disappears when disabled, freeing space for agents; consent and errors remain reachable. **Allow Spotify visualizer** only opens the confirmation; Cancel grants nothing. After Allow saves and verifies the choice, Spotify capture starts in the current visible idle panel and on future panel opens or reloads without asking again. Choose **Disable visualizer** to revoke permission and stop this panel's capture, never a peer panel's capture. The explicit consent control returns after revocation. Closing the panel stops capture without changing the remembered choice. This does not bypass macOS audio permission. There are no manual Start or Stop buttons.
+Permission is off by default. The **Spotify** or **All apps** button opens the confirmation; **No** grants nothing. After **Allow** is saved and verified, capture starts in the current visible panel and on future opens or reloads. On Windows without process-specific capture, the prompt explains that fallback audio includes shared-mode audio routed to the default output device. Allowing it saves a separate all-app permission; prior Spotify-only consent cannot authorize it. Once enabled, the same button turns capture off and revokes the active scope's permission, never a peer panel's capture. Closing the panel stops capture but keeps the remembered choice. This does not bypass macOS audio permission. There are no manual Start or Stop buttons.
 
 Quickly switching away and back may show **Waiting for previous capture to stop…** for about 5 seconds. Automatic start waits for that session to end instead of taking it over.
 
-The helper uses an audio-only Core Audio tap filtered to Spotify (`com.spotify.client`), not the microphone, screen, or other apps' audio. Samples remain in memory; only frequency-band levels reach the panel. No audio is recorded, saved, or uploaded. The plugin never falls back to microphone or all-system capture.
+On macOS 26 or newer, the helper uses an audio-only Core Audio tap filtered to Spotify (`com.spotify.client`). Windows uses shared-mode WASAPI process loopback for Spotify and its child processes where supported. Only when that is unavailable does the panel offer an explicit all-app fallback: shared-mode audio from apps and system sounds routed to the default output device. Other output devices and exclusive-mode streams may not be included. This fallback requires its own remembered consent and is never enabled by Spotify-only permission. Neither path captures the microphone or screen. Samples stay in memory; only frequency-band levels reach the panel. No audio is recorded, saved, or uploaded. Windows launches the bundled helper through Windows PowerShell; it compiles in memory and needs no separate runtime download.
 
 Silence shows sleeping Snorlax instead of the bars; audio input restores the visualizer. A loader appears until the first captured frame arrives. Silence means all captured frequency bands are below the helper's display floor, not proof that Spotify is stopped. If no bars appear, confirm Spotify is playing locally and check the permission above. Protected playback, device changes, or Spotify's process attribution can prevent capture. Pausing motion pauses the display, not capture. Hiding or closing the panel requests a stop, with a 5-second lease timeout if the connection is lost. Reopening starts capture again only if saved permission is verified as literal `true`. Capture waits for a previous session to stop and never takes it over. A failed start does not retry in a loop; reopen the panel to try again.
 
-Click **Refresh** to update the agent list and restart Spotify capture when saved permission is enabled. Capture waits for its previous helper to close before restarting. Automatic roster updates do not restart capture, and Refresh never takes over another panel's session or grants permission.
+Click **Refresh** to update the agent list and restart audio capture when saved permission is enabled. Capture waits for its previous helper to close before restarting. Automatic roster updates do not restart capture, and Refresh never takes over another panel's session or grants permission.
 
 ## Permissions and privacy
 
@@ -94,13 +94,13 @@ The plugin runs a **trusted Node worker with your user account's machine access*
 | `workspace:read` | Workspace context and lifecycle events |
 | `workspace:write` | Workspace and terminal navigation |
 | `agent:read` | Live agent status events |
-| `storage:own` | Persist Pokémon choices in plugin-private storage |
+| `storage:own` | Persist Pokémon choices and audio-consent settings in plugin-private storage |
 
 Orca's plugin API cannot list agents across all workspaces or focus an individual terminal. The worker bridges those gaps with the documented `worktree ps`, `terminal list`, and `terminal switch` CLI commands. It passes fixed argument shapes without a shell and validates agent identities and navigation receipts.
 
-CLI responses include conversation metadata and terminal previews. The worker discards these except the displayed agent title, kind, state, workspace label, and routing identity. Raw responses and previews are not stored or logged. Persistent storage contains species numbers under hashed identity keys and your automatic-start choice.
+CLI responses include conversation metadata and terminal previews. The worker discards these except the displayed agent title, kind, state, workspace label, and routing identity. Raw responses and previews are not stored or logged. Persistent storage contains species numbers under hashed identity keys, your Spotify-only automatic-start choice, and a separate all-app audio choice if you explicitly allow the fallback.
 
-The plugin does not submit terminal input, launch agents, access the microphone, or send data to an external service. Optional Spotify capture requires your remembered explicit consent, plus separate macOS permission. These are intended behaviors, not sandbox guarantees: trusted worker code has broader machine authority.
+The plugin does not submit terminal input, launch agents, access the microphone, or send data to an external service. Optional audio capture requires remembered explicit consent; macOS also requires separate system-audio permission. On Windows, all-app consent is requested only when Spotify-only process loopback is unavailable, and remains separate from Spotify-only consent. These are intended behaviors, not sandbox guarantees: trusted worker code has broader machine authority.
 
 ## Limitations
 

@@ -1,5 +1,6 @@
 // Test fixture only. Does not grant permissions or call a real Orca API.
 const stored = new Map(JSON.parse(sessionStorage.getItem('pokemon-preview-storage') ?? '[]'));
+if (new URL(location.href).searchParams.has('windows-audio')) stored.set('audio.autostart.v1', true);
 const listeners = new Map();
 const storageListeners = [];
 const audioListeners = new Map();
@@ -61,10 +62,13 @@ window.orca = {
         return { agents: window.fixture.agents.map(agent => ({ ...agent })), partial: false };
       }
       if (name === 'focus') return { focused: true };
+      if (name === 'audio.capabilities') return new URL(location.href).searchParams.has('windows-audio')
+        ? { scope: 'all-app', message: 'Spotify-only capture is unavailable on this Windows release. You can choose shared audio from the default output device instead.' }
+        : { scope: 'spotify', message: '' };
       if (name === 'audio.status' || name === 'audio.heartbeat') return { ...window.fixture.audio };
       if (name === 'audio.start') {
         if (window.fixture.failAudioStart) throw new Error('Fixture audio permission denied');
-        window.fixture.audio = { state: 'starting', message: 'Starting Spotify capture…', session: input.session };
+        window.fixture.audio = { state: 'starting', message: input.scope === 'all-app' ? 'Starting all-app audio capture…' : 'Starting Spotify capture…', session: input.session };
         return { ...window.fixture.audio };
       }
       if (name === 'audio.stop') {

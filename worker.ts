@@ -1,7 +1,7 @@
 import { callCli } from './cli.ts';
 import { record, rosterFromCli, terminalHandle, type AgentRow, type Roster } from './model.ts';
 import { AudioCapture } from './audio-capture.ts';
-import { audioSession, type AudioFrame, type AudioStatus } from './audio-protocol.ts';
+import { audioSession, audioStartRequest, type AudioCapabilities, type AudioFrame, type AudioStartRequest, type AudioStatus } from './audio-protocol.ts';
 
 // Local structural contract: this Orca build's `plugin types` command lacks its packaged declarations.
 export interface WorkerApi {
@@ -52,8 +52,12 @@ export interface AudioWorkerApi {
 }
 
 export function registerAudio(orca: AudioWorkerApi, capture: AudioCapture): void {
+  orca.panels.handle('audio.capabilities', async (): Promise<AudioCapabilities> => capture.capabilities());
   orca.panels.handle('audio.status', async (): Promise<AudioStatus> => capture.status());
-  orca.panels.handle('audio.start', async (input: unknown): Promise<AudioStatus> => capture.start(audioSession(input)));
+  orca.panels.handle('audio.start', async (input: unknown): Promise<AudioStatus> => {
+    const request: AudioStartRequest = audioStartRequest(input);
+    return capture.start(request.session, request.scope);
+  });
   orca.panels.handle('audio.stop', async (input: unknown): Promise<AudioStatus> => capture.stop(audioSession(input)));
   orca.panels.handle('audio.heartbeat', async (input: unknown): Promise<AudioStatus> => capture.heartbeat(audioSession(input)));
 }
