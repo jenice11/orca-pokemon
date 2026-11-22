@@ -1,7 +1,7 @@
 :root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--orca-foreground, #e8e8ed); background: var(--orca-background, #17191e); }
-header { flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--orca-border, #363a43); }
+header { flex-shrink: 0; padding: 8px calc(12px + var(--scrollbar-width, 0px)) 8px 12px; border-bottom: 1px solid var(--orca-border, #363a43); }
 .heading, .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .heading-actions { display: flex; align-items: center; flex-shrink: 0; gap: 6px; }
 .heading h1 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -16,7 +16,7 @@ button { min-height: 32px; padding: 4px 10px; cursor: pointer; }
 button:hover, select:hover { background: var(--orca-accent, #303644); }
 button:disabled, select:disabled { opacity: .55; cursor: wait; }
 :focus-visible { outline: 2px solid var(--orca-ring, #a6d8ad); outline-offset: 3px; }
-main { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 10px; }
+main { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; padding: 10px; }
 .toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; font-size: 10px; color: var(--orca-muted-foreground, #acb0bb); margin: 0 2px 10px; gap: 6px; }
 #summary { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toolbar-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }

@@ -1082,6 +1082,12 @@ async function start(): Promise<void> {
     hideWorkspaceTooltip();
     if (speciesOwner) { event.preventDefault(); closeSpecies(true); }
   });
+  if (typeof ResizeObserver !== 'undefined') {
+    const scroller: HTMLElement = list.parentElement!;
+    new ResizeObserver((): void => {
+      document.documentElement.style.setProperty('--scrollbar-width', `${scroller.offsetWidth - scroller.clientWidth}px`);
+    }).observe(scroller);
+  }
   updateMotion();
   refreshButton.addEventListener('click', async (): Promise<void> => {
     sortRequested = true;
