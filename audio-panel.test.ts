@@ -18,7 +18,7 @@ test('footer power controls stay accessible and credits exclude usage instructio
   assert.doesNotMatch(onButton, /spotify-slash/);
   const credits: string = html.match(/<div id="credits-popup"[\s\S]*?<\/div>/)![0];
   assert.match(credits, /popover="auto" role="dialog" aria-labelledby="credits-title"/);
-  assert.match(credits, /popovertarget="credits-popup" popovertargetaction="hide"/);
+  assert.doesNotMatch(credits, /<button/);
   assert.doesNotMatch(credits, /Refresh after|Click a Pokémon/);
   const header: string = html.match(/<header>[\s\S]*?<\/header>/)![0];
   const footer: string = html.match(/<footer class="bottom-bar">[\s\S]*?<\/footer>/)![0];
