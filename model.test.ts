@@ -66,6 +66,56 @@ test('unknown state is never represented as done or successful', (): void => {
   assert.equal(agentState('done'), 'done');
 });
 
+test('resumed Copilot sessions with a live terminal remain in the roster', (): void => {
+  const roster: Roster = rosterFromCli({
+    worktrees: [{
+      worktreeId: 'resumed-workspace', displayName: 'Resumed', repo: 'project', repoId: 'project-repo',
+      hostId: 'local',
+      agents: [{
+        paneKey: 'tab:pane', agentType: 'copilot',
+        conversationName: 'Resumed Copilot session', state: 'waiting'
+      }]
+    }],
+    hostScope: {}
+  }, [{ worktreeId: 'resumed-workspace', paneKey: 'tab:pane', title: 'Resumed Copilot session', agent: 'copilot', state: 'working' }]);
+  assert.equal(roster.agents.length, 1);
+  assert.equal(roster.agents[0].agent, 'copilot');
+  assert.equal(roster.agents[0].paneKey, 'tab:pane');
+});
+
+test('resumed workspaces synthesize an agent from a live terminal identity', (): void => {
+  const roster: Roster = rosterFromCli({
+    worktrees: [{
+      worktreeId: 'resumed-workspace', displayName: 'Resumed', repo: 'project',
+      repoId: 'project-repo', hostId: 'local', agents: []
+    }],
+    hostScope: {}
+  }, [{
+    worktreeId: 'resumed-workspace',
+    paneKey: 'resumed-tab:resumed-pane',
+    title: 'Update Spotify Capture - GitHub Copilot',
+    agent: 'copilot',
+    state: 'working'
+  }]);
+  assert.equal(roster.agents.length, 1);
+  assert.equal(roster.agents[0].agent, 'copilot');
+  assert.equal(roster.agents[0].state, 'working');
+  assert.equal(roster.agents[0].title, 'Update Spotify Capture - GitHub Copilot');
+});
+
+test('live terminal status replaces unknown metadata for an existing resumed agent', (): void => {
+  const roster: Roster = rosterFromCli({
+    worktrees: [{
+      worktreeId: 'resumed-workspace', displayName: 'Resumed', agents: [{
+        paneKey: 'tab:pane', agentType: 'copilot', state: 'unknown', hasLivePty: false
+      }]
+    }],
+    hostScope: {}
+  }, [{ worktreeId: 'resumed-workspace', paneKey: 'tab:pane', title: 'Copilot', agent: 'copilot', state: 'waiting' }]);
+  assert.equal(roster.agents.length, 1);
+  assert.equal(roster.agents[0].state, 'waiting');
+});
+
 test('truncation and omitted hosts make the roster partial', (): void => {
   const input: Record<string, unknown> = fixture() as Record<string, unknown>;
   assert.equal(rosterFromCli({ ...input, truncated: true }).partial, true);

@@ -960,6 +960,7 @@ async function refresh(): Promise<void> {
     for (const [key, update] of statusUpdates) if (update.revision <= queryRevision) statusUpdates.delete(key);
     element('empty').hidden = companions.size !== 0;
     element('partial').hidden = !roster.partial;
+    element('partial').title = roster.partialReason ?? '';
     rosterStale = false;
     rosterError = '';
     paintError();

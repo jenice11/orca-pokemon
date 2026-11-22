@@ -1,4 +1,4 @@
-export type AgentState = 'working' | 'blocked' | 'waiting' | 'done' | 'unknown';
+type AgentState = 'working' | 'blocked' | 'waiting' | 'done' | 'unknown';
 
 export interface AgentRow {
   id: string;
@@ -15,6 +15,7 @@ export interface AgentRow {
 export interface Roster {
   agents: AgentRow[];
   partial: boolean;
+  partialReason?: string;
 }
 
 export function record(value: unknown): Record<string, unknown> {
@@ -29,7 +30,15 @@ export function agentState(value: unknown): AgentState {
     ? value : 'unknown';
 }
 
-export function rosterFromCli(value: unknown): Roster {
+export interface LiveAgentTerminal {
+  worktreeId: string;
+  paneKey: string;
+  title: string;
+  agent: string;
+  state: AgentState;
+}
+
+export function rosterFromCli(value: unknown, liveAgentTerminals: readonly LiveAgentTerminal[] = [], terminalLookupPartial: boolean = false): Roster {
   const result: Record<string, unknown> = record(value);
   if (!Array.isArray(result.worktrees)) throw new Error('Orca did not return a workspace roster.');
   const agents: AgentRow[] = [];
@@ -50,7 +59,12 @@ export function rosterFromCli(value: unknown): Roster {
     for (const rawAgent of workspace.agents as unknown[]) {
       const agent: Record<string, unknown> = record(rawAgent);
       // Only proven live PTYs: the CLI also returns historical agent records.
-      if (agent.hasLivePty !== true || typeof agent.paneKey !== 'string') continue;
+      if (typeof agent.paneKey !== 'string') continue;
+      const liveFromTerminal: boolean = liveAgentTerminals.some((terminal: LiveAgentTerminal): boolean =>
+        terminal.worktreeId === workspace.worktreeId && terminal.paneKey === agent.paneKey);
+      if (agent.hasLivePty !== true && !liveFromTerminal) continue;
+      const liveTerminal: LiveAgentTerminal | undefined = liveAgentTerminals.find((terminal: LiveAgentTerminal): boolean =>
+        terminal.worktreeId === workspace.worktreeId && terminal.paneKey === agent.paneKey);
       const title: unknown = agent.conversationName ?? agent.displayName ?? agent.taskTitle;
       agents.push({
         id: JSON.stringify([workspace.worktreeId, agent.paneKey]),
@@ -61,14 +75,30 @@ export function rosterFromCli(value: unknown): Roster {
         paneKey: agent.paneKey,
         title: typeof title === 'string' && title ? title : String(agent.agentType ?? 'Agent'),
         agent: typeof agent.agentType === 'string' ? agent.agentType : 'Agent',
-        state: agentState(agent.state)
+        state: agentState(agent.state) === 'unknown' ? liveTerminal?.state ?? 'unknown' : agentState(agent.state)
+      });
+    }
+    for (const terminal of liveAgentTerminals) {
+      if (terminal.worktreeId !== workspace.worktreeId) continue;
+      if (agents.some((agent: AgentRow): boolean =>
+        agent.workspaceId === workspace.worktreeId && agent.paneKey === terminal.paneKey)) continue;
+      agents.push({
+        id: JSON.stringify([workspace.worktreeId, terminal.paneKey]),
+        workspaceId: workspace.worktreeId,
+        workspace: workspaceName,
+        projectId,
+        projectName: typeof workspace.repo === 'string' && workspace.repo ? workspace.repo : workspaceName,
+        paneKey: terminal.paneKey,
+        title: terminal.title,
+        agent: terminal.agent,
+        state: terminal.state
       });
     }
   }
   const scope: Record<string, unknown> = record(result.hostScope);
   return {
     agents,
-    partial: result.truncated === true ||
+    partial: result.truncated === true || terminalLookupPartial ||
       (Array.isArray(scope.omittedHostIds) && scope.omittedHostIds.length > 0)
   };
 }

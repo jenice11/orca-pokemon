@@ -1,5 +1,5 @@
 import { callCli } from './cli.ts';
-import { record, rosterFromCli, terminalHandle, type AgentRow, type Roster } from './model.ts';
+import { agentState, record, rosterFromCli, terminalHandle, type AgentRow, type LiveAgentTerminal, type Roster } from './model.ts';
 import { AudioCapture } from './audio-capture.ts';
 import { audioSession, audioStartRequest, type AudioCapabilities, type AudioFrame, type AudioStartRequest, type AudioStatus } from './audio-protocol.ts';
 
@@ -10,13 +10,85 @@ export interface WorkerApi {
   };
 }
 
-export function registerPanel(orca: WorkerApi, run: typeof callCli): void {
+interface CachedLookup {
+  signature: string;
+  at: number;
+  found: LiveAgentTerminal[];
+}
+
+export function registerPanel(orca: WorkerApi, run: typeof callCli, now: () => number = Date.now): void {
+  const lookupCache: Map<string, CachedLookup> = new Map();
   let current: Roster = { agents: [], partial: false };
   let rosterQueue: Promise<void> = Promise.resolve();
   let focusQueue: Promise<void> = Promise.resolve();
-  orca.panels.handle('roster', async (): Promise<Roster> => {
+  orca.panels.handle('roster', async (input: unknown): Promise<Roster> => {
+    const force: boolean = typeof input === 'object' && input !== null && (input as { force?: unknown }).force === true;
     const query: Promise<Roster> = rosterQueue.then(async (): Promise<Roster> => {
-      const next: Roster = rosterFromCli(await run(['worktree', 'ps', '--limit', '10000']));
+      const snapshot: unknown = await run(['worktree', 'ps', '--limit', '10000']);
+      const result: Record<string, unknown> = record(snapshot);
+      const worktrees: unknown[] = Array.isArray(result.worktrees) ? result.worktrees : [];
+      const liveAgentTerminals: LiveAgentTerminal[] = [];
+      let terminalLookupPartial: boolean = false;
+      let terminalLookupFailure: string = '';
+      const lookup: (rawWorkspace: unknown) => Promise<void> = async (rawWorkspace: unknown): Promise<void> => {
+        const workspace: Record<string, unknown> = record(rawWorkspace);
+        if (typeof workspace.worktreeId !== 'string') return;
+        const workspaceState: ReturnType<typeof agentState> = agentState(workspace.status) !== 'unknown'
+          ? agentState(workspace.status)
+          : agentState(workspace.sidebarStatus) !== 'unknown'
+            ? agentState(workspace.sidebarStatus)
+            : 'waiting';
+        try {
+          const signature: string = JSON.stringify([workspace.status, workspace.sidebarStatus,
+            Array.isArray(workspace.agents) ? workspace.agents.map((agent: unknown): unknown[] => {
+              const item: Record<string, unknown> = record(agent);
+              return [item.paneKey, item.state, item.hasLivePty];
+            }) : null]);
+          const cached: CachedLookup | undefined = lookupCache.get(workspace.worktreeId);
+          if (!force && cached && cached.signature === signature && now() - cached.at < 5000) {
+            // Same worktree status moments ago: reuse its terminals instead of starting another CLI process.
+            for (const terminal of cached.found) liveAgentTerminals.push(cached.found.length === 1 ? { ...terminal, state: workspaceState } : terminal);
+            return;
+          }
+          const terminalList: unknown = await run(['terminal', 'list', '--worktree', `id:${workspace.worktreeId}`, '--limit', '10000']);
+          const terminalResult: Record<string, unknown> = record(terminalList);
+          if (terminalResult.truncated === true || !Array.isArray(terminalResult.terminals)) {
+            terminalLookupPartial = true;
+            terminalLookupFailure ||= 'Orca returned a truncated terminal list.';
+            return;
+          }
+          const found: LiveAgentTerminal[] = [];
+          for (const rawTerminal of terminalResult.terminals as unknown[]) {
+            const terminal: Record<string, unknown> = record(rawTerminal);
+            if (terminal.orphaned === true || terminal.worktreeId !== workspace.worktreeId ||
+                typeof terminal.tabId !== 'string' || typeof terminal.leafId !== 'string') continue;
+            if (typeof terminal.agentIdentity !== 'string' || !terminal.agentIdentity.trim()) continue;
+            found.push({
+              worktreeId: workspace.worktreeId,
+              paneKey: `${terminal.tabId}:${terminal.leafId}`,
+              title: typeof terminal.title === 'string' && terminal.title ? terminal.title : 'Agent',
+              agent: terminal.agentIdentity,
+              state: workspaceState
+            });
+          }
+          // One shared workspace status only describes a terminal when it is the sole agent there.
+          const described: LiveAgentTerminal[] = found.map((terminal: LiveAgentTerminal): LiveAgentTerminal => found.length === 1 ? terminal : { ...terminal, state: 'unknown' });
+          lookupCache.set(workspace.worktreeId, { signature, at: now(), found: described });
+          liveAgentTerminals.push(...described);
+        } catch (error: unknown) {
+          terminalLookupPartial = true;
+          terminalLookupFailure ||= error instanceof Error ? error.message : String(error);
+        }
+      };
+      let nextWorkspace: number = 0;
+      const lookups: Promise<void>[] = Array.from({ length: Math.min(4, worktrees.length) }, async (): Promise<void> => {
+        while (nextWorkspace < worktrees.length) await lookup(worktrees[nextWorkspace++]);
+      });
+      await Promise.all(lookups);
+      const present: Set<unknown> = new Set(worktrees.map((item: unknown): unknown => record(item).worktreeId));
+      for (const id of lookupCache.keys()) if (!present.has(id)) lookupCache.delete(id);
+      const next: Roster = rosterFromCli(snapshot, liveAgentTerminals, terminalLookupPartial);
+      if (next.partial && terminalLookupFailure) next.partialReason = terminalLookupFailure.slice(0, 300);
       current = next;
       return next;
     });
