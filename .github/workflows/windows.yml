@@ -1,0 +1,13 @@
+name: windows
+on: [push, pull_request]
+jobs:
+  helper:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm test
+      - run: powershell -NoProfile -ExecutionPolicy Bypass -File native/SpotifyAudioHelper.Windows.ps1 --self-test
