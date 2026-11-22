@@ -213,7 +213,7 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
       assert.equal(starts, 0, 'Unsupported Windows releases must not start capture, even with saved permission.');
       assert.equal(elements.get('audio-card')!.hidden, true);
       assert.equal(elements.get('audio-enable')!.disabled, true);
-      assert.match(elements.get('audio-preference-status')!.textContent, /unavailable on this Windows release/);
+      assert.equal(elements.get('audio-preference-status')!.textContent, '');
       assert.match(elements.get('audio-enable')!.title, /unavailable on this Windows release/);
       return;
     }
@@ -228,7 +228,7 @@ async function verifyReopen(context: TestContext, initialStatusEvent: boolean, p
       assert.equal(elements.get('audio-title')!.textContent, 'All-app audio');
       assert.equal(elements.get('audio-bands')!.ariaLabel, 'All-app output frequency spectrum');
       assert.match(elements.get('audio-consent-description')!.textContent, /visualizer analyzes audio from all apps/);
-      assert.match(elements.get('audio-preference-status')!.textContent, /unavailable on this Windows release/);
+      assert.equal(elements.get('audio-preference-status')!.textContent, '');
       assert.match(elements.get('audio-enable')!.title, /Spotify-only capture is unavailable/);
       assert.equal(elements.get('audio-enable-label')!.textContent, 'All apps');
       assert.equal(elements.get('audio-allow')!.textContent, 'Allow');
