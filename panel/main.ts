@@ -832,9 +832,9 @@ function agentBrand(agent: string): string {
   if (name.includes('codex') || name.includes('openai')) return 'codex';
   if (name.includes('opencode')) return 'opencode';
   if (name.includes('gemini')) return 'gemini';
-  if (name.includes('github copilot') || name.includes('copilot')) return 'copilot';
+  if (name.includes('copilot')) return 'copilot';
   if (name.includes('cursor')) return 'cursor';
-  if (name.includes('kilo') || name.includes('kilocode')) return 'kilocode';
+  if (name.includes('kilo')) return 'kilocode';
   if (name.includes('roo code') || name.includes('roocode')) return 'roocode';
   if (name.includes('windsurf')) return 'windsurf';
   if (name.includes('cline')) return 'cline';
