@@ -335,7 +335,8 @@ export async function run(): Promise<string[]> {
     .filter((call: { name?: string }): boolean => call.name === 'audio.start' || call.name === 'audio.stop')
     .map((call: { name?: string }): string => call.name!);
   const beforeMotionAudio: string[] = audioCalls();
-  await until((): boolean => sprite.getAnimations().length > 0);
+  sprite.scrollIntoView({ block: 'nearest' });
+  await until((): boolean => sprite.getAnimations().length > 0 && sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'running'));
   check(sprite.getAnimations().every((animation: Animation): boolean => animation.playState === 'running'), 'Visible sprites must start running when global motion is enabled.');
   for (const hiddenBy of ['filter', 'collapse']) {
     if (hiddenBy === 'filter') select('agent-filter', 'idle');

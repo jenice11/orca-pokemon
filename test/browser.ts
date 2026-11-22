@@ -95,6 +95,27 @@ export async function run(): Promise<string[]> {
     window.dispatchEvent(new Event(event));
     await until((): boolean => fixture.calls.filter((call): boolean => call.name === 'roster').length > rosterCalls);
   }
+  const rosterRequests = (): number => fixture.calls.filter((call): boolean => call.name === 'roster').length;
+  const refreshIdle = (): boolean => !(document.getElementById('refresh') as HTMLButtonElement).disabled;
+  let repaints: number = 0;
+  const repaintWatcher: MutationObserver = new MutationObserver((records: MutationRecord[]): void => { repaints += records.length; });
+  // paintCompanion rewrites data-state on every repaint, even when the value is unchanged.
+  repaintWatcher.observe(firstCard(), { attributes: true, attributeFilter: ['data-state'] });
+  const requestsBeforeSame: number = rosterRequests();
+  window.dispatchEvent(new Event('focus'));
+  await until((): boolean => rosterRequests() > requestsBeforeSame);
+  await until(refreshIdle);
+  await new Promise<void>((resolve): void => { setTimeout(resolve, 0); });
+  check(repaints === 0, 'A refresh that returns an unchanged roster must not repaint cards.');
+  const originalState: AgentRow['state'] = fixture.agents[0].state;
+  fixture.agents[0].state = originalState === 'working' ? 'done' : 'working';
+  window.dispatchEvent(new Event('focus'));
+  await until((): boolean => repaints > 0);
+  fixture.agents[0].state = originalState;
+  window.dispatchEvent(new Event('focus'));
+  await until((): boolean => firstCard().dataset.state === originalState);
+  await until(refreshIdle);
+  repaintWatcher.disconnect();
   const liveDialogue: HTMLElement = firstCard().querySelector('.companion-dialogue')!;
   check(liveDialogue.getAttribute('role') === 'status' && liveDialogue.getAttribute('aria-live') === 'polite' &&
     liveDialogue.getAttribute('aria-atomic') === 'true', 'Dialogue changes must expose a polite, complete status announcement.');

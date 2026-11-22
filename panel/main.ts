@@ -27,6 +27,7 @@ interface Companion {
   workAnimation: 'walk' | 'shock' | 'tumbleback';
   workSelect: HTMLFieldSetElement;
   animation: Animation | null;
+  inView: boolean;
   saving: boolean;
   choiceRevision: number;
   storageKey: string;
@@ -95,6 +96,8 @@ let refreshAgain: boolean = false;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 let statusRevision: number = 0;
 let rosterStale: boolean = false;
+let lastRosterSignature: string = '';
+let forceRoster: boolean = false;
 let rosterError: string = '';
 let operationError: string = '';
 let orderError: string = '';
@@ -117,6 +120,17 @@ let draggedProject: ProjectGroup | undefined;
 let tooltipOwner: Companion | undefined;
 let tooltipDelay: ReturnType<typeof setTimeout> | undefined;
 let audioVisualizer: AudioVisualizer | undefined;
+const cardCompanions: WeakMap<Element, Companion> = new WeakMap();
+const viewObserver: IntersectionObserver | undefined = typeof IntersectionObserver === 'undefined' ? undefined
+  : new IntersectionObserver((entries: IntersectionObserverEntry[]): void => {
+    for (const entry of entries) {
+      const companion: Companion | undefined = cardCompanions.get(entry.target);
+      if (!companion) continue;
+      // A card without a box is hidden by a filter or collapse; that case already pauses and resumes synchronously.
+      companion.inView = entry.isIntersecting || entry.boundingClientRect.height === 0;
+      syncSpriteMotion(companion);
+    }
+  }, { rootMargin: '80px' });
 const statusUpdates: Map<string, { revision: number; state: AgentRow['state'] }> = new Map();
 
 function showError(error: unknown): void {
@@ -614,7 +628,7 @@ function animateSprite(companion: Companion): void {
 function syncSpriteMotion(companion: Companion): void {
   const animation: Animation | null = companion.animation;
   if (!animation) return;
-  const hidden: boolean = paused || document.hidden || companion.card.closest('[hidden]') !== null;
+  const hidden: boolean = paused || document.hidden || !companion.inView || companion.card.closest('[hidden]') !== null;
   if (hidden && animation.playState === 'running') animation.pause();
   else if (!hidden && animation.playState === 'paused') animation.play();
 }
@@ -684,7 +698,7 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
   workSelect.disabled = true;
   select.disabled = true;
   const companion: Companion = {
-    row, card, select, species, workSelect, workAnimation: 'shock',
+    row, card, select, species, workSelect, workAnimation: 'shock', inView: true,
     title: card.querySelector('h2')!,
     agentBadge: card.querySelector('.agent-icon')!,
     status: card.querySelector('.state-label')!,
@@ -806,6 +820,8 @@ function createCompanion(row: AgentRow, storageKey: string): Companion {
   });
   select.addEventListener('click', (): void => { openSpecies(companion); });
   projects.get(row.projectId)!.list.append(card);
+  cardCompanions.set(card, companion);
+  viewObserver?.observe(card);
   void loadChoice(companion);
   return companion;
 }
@@ -904,8 +920,12 @@ async function refresh(): Promise<void> {
   refreshing = true;
   refreshButton.disabled = true;
   const queryRevision: number = statusRevision;
+  const force: boolean = forceRoster;
+  forceRoster = false;
   try {
-    const roster: Roster = await orca.plugin.request('roster') as Roster;
+    const roster: Roster = await orca.plugin.request('roster', { force }) as Roster;
+    const signature: string = JSON.stringify(roster);
+    if (signature === lastRosterSignature && !sortRequested && !rosterStale && statusUpdates.size === 0) return;
     const keys: string[] = await Promise.all(roster.agents.map((row: AgentRow): Promise<string> => {
       const existing: Companion | undefined = companions.get(row.id);
       return existing ? Promise.resolve(existing.storageKey) : choiceKey(row.id);
@@ -933,6 +953,7 @@ async function refresh(): Promise<void> {
       if (dragged === companion) finishDrag();
       companion.choiceRevision++;
       companion.animation?.cancel();
+      viewObserver?.unobserve(companion.card);
       companion.card.remove();
       companions.delete(id);
     }
@@ -971,7 +992,9 @@ async function refresh(): Promise<void> {
       restore?.focus({ preventScroll: restore !== viewButton });
     }
     sortRequested = false;
+    lastRosterSignature = signature;
   } catch (error: unknown) {
+    lastRosterSignature = '';
     rosterStale = true;
     rosterError = error instanceof Error ? error.message : String(error);
     paintError();
@@ -1062,6 +1085,7 @@ async function start(): Promise<void> {
   updateMotion();
   refreshButton.addEventListener('click', async (): Promise<void> => {
     sortRequested = true;
+    forceRoster = true;
     audioVisualizer?.refresh();
     if (!cardOrderWritable || !projectOrderWritable) {
       refreshButton.disabled = true;
